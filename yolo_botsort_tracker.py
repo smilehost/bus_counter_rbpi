@@ -142,6 +142,11 @@ class YOLOBoTSORTTracker:
         # Initialize variables
         tracks = []
         
+        # DEBUG: Log frame processing info
+        should_debug = frame_count % 10 == 0
+        if should_debug:
+            print(f"\n--- PROCESSING FRAME {frame_count} ---")
+        
         # Always predict track positions for smooth tracking
         self.tracker._predict_tracks()
         
@@ -161,14 +166,30 @@ class YOLOBoTSORTTracker:
         # Extract detections
         detections = self._extract_detections(results[0])
         
+        # DEBUG: Log detection info
+        if should_debug:
+            print(f"Detections found: {len(detections)}")
+            if len(detections) == 0:
+                print("NO DETECTIONS - Checking for potential ghost tracks...")
+        
         # Start tracking timer
         tracking_start = time.time()
         
         # BoTSORT tracking
+        tracks_before = len(self.tracker.tracks)
         tracks = self.tracker.update(detections, frame)
+        tracks_after = len(tracks)
         
         tracking_time = time.time() - tracking_start
         self.performance_monitor.add_tracking_time(tracking_time)
+        
+        # DEBUG: Log track changes
+        if should_debug:
+            print(f"Tracks before: {tracks_before}, Tracks after: {tracks_after}")
+            if len(detections) == 0 and tracks_after > 0:
+                print(f"WARNING: {tracks_after} tracks active with NO detections (GHOSTING!)")
+                for track in tracks:
+                    print(f"  Ghost track {track.track_id}: time_since_update={track.time_since_update}, bbox={track.to_tlbr()}")
         
         # Update bus counter
         height = frame.shape[0]

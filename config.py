@@ -6,25 +6,25 @@ class Config:
         self.YOLO_MODEL = "yolo11s.pt"
         # LOWERED: High confidence kills tracking in crowds. 
         # 0.4 - 0.5 is usually the sweet spot for tracking.
-        self.YOLO_CONFIDENCE = 0.45  
-        self.YOLO_IOU_THRESHOLD = 0.5
+        self.YOLO_CONFIDENCE = 0.5  
+        self.YOLO_IOU_THRESHOLD = 0.6
         self.YOLO_CLASSES = [0]  # Focus ONLY on Person (0) if you are doing passenger counting to save resources
         
         # --- BoTSORT Configuration ---
         self.BOTSORT_TRACKER = {
             # Must be slightly higher or equal to YOLO_CONFIDENCE
-            'track_high_thresh': 0.5, 
+            'track_high_thresh': 0.6, 
             
             'track_low_thresh': 0.1,
             
             # LOWERED: Easier to start tracking a new person entering the frame
-            'new_track_thresh': 0.4, 
+            'new_track_thresh': 0.5, 
             
-            'track_buffer': 60,  # INCREASED: Keep "lost" tracks in memory for 2 seconds (at 30fps) to recover from occlusions
+            'track_buffer': 40,  # INCREASED: Keep "lost" tracks in memory for 2 seconds (at 30fps) to recover from occlusions
             
             # CRITICAL FIX: 0.9 is too strict. 0.7 allows for movement between frames.
             # If this is too high, you get "Ghosting" (tracker creates new ID for same person).
-            'match_thresh': 0.7, 
+            'match_thresh': 0.6, 
             
             # Adjusted for standard BoTSORT behavior
             'proximity_thresh': 0.5, 

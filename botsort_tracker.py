@@ -48,11 +48,21 @@ class BoTSORT:
             print(f"Active tracks before update: {len(self.tracks)}")
             track_ids_before = [t.track_id for t in self.tracks]
             print(f"Track IDs before update: {track_ids_before}")
+            
+            # DEBUG: Log track states and time_since_update
+            for track in self.tracks:
+                print(f"  Track {track.track_id}: state={track.state}, time_since_update={track.time_since_update}, hits={track.hits}, age={track.age}")
         
         # Convert detections to format
         if len(detections) == 0:
             if should_debug:
-                print("No detections in this frame")
+                print("No detections in this frame - checking for ghost tracks")
+                # DEBUG: Check which tracks might be ghosting
+                for track in self.tracks:
+                    if track.time_since_update > 5:  # Tracks not updated for >5 frames
+                        print(f"  POTENTIAL GHOST: Track {track.track_id} not updated for {track.time_since_update} frames")
+                        print(f"    Last known bbox: {track.bbox}")
+                        print(f"    Predicted bbox: {track.to_tlbr()}")
             self._manage_lost_tracks(should_debug)
             return self._get_active_tracks()
         
@@ -186,12 +196,18 @@ class BoTSORT:
                 track_id = self.tracks[r].track_id
                 if should_debug:
                     print(f"    Matched track {track_id} (idx {r}) with detection {c} (IoU: {iou_matrix[r, c]:.2f}, Cost: {gated_cost_matrix[r, c]:.2f})")
+                    # DEBUG: Log track state before matching
+                    track = self.tracks[r]
+                    print(f"      Track {track_id} before update: time_since_update={track.time_since_update}, state={track.state}")
                 matches.append((r, c))
                 unmatched_dets.discard(c)
                 unmatched_trks.discard(r)
             else:
                 if should_debug:
                     print(f"    Rejected match track {r} with detection {c} (IoU: {iou_matrix[r, c]:.2f}, Cost: {gated_cost_matrix[r, c]:.2f})")
+                    # DEBUG: Log why track wasn't matched
+                    track = self.tracks[r]
+                    print(f"      Unmatched track {track.track_id}: time_since_update={track.time_since_update}, state={track.state}")
         
         return matches, list(unmatched_dets), list(unmatched_trks)
     
@@ -288,20 +304,26 @@ class BoTSORT:
         
         for track in self.tracks:
             if track.state == Track.Confirmed:
-                # Keep confirmed tracks alive much longer to prevent ID changes
-                if track.time_since_update <= self.track_buffer * 5:  # Much larger buffer
+                # DEBUG: More aggressive track removal to prevent ghosting
+                # Reduced from track_buffer * 5 to track_buffer * 2
+                if track.time_since_update <= self.track_buffer * 2:  # Reduced buffer
                     active_tracks.append(track)
+                    if should_debug and track.time_since_update > 5:
+                        print(f"    WARNING: Track {track.track_id} active but not updated for {track.time_since_update} frames (GHOSTING RISK)")
                 else:
                     if should_debug:
-                        print(f"    Moving confirmed track {track.track_id} to lost (time_since_update: {track.time_since_update})")
+                        print(f"    Moving confirmed track {track.track_id} to lost (time_since_update: {track.time_since_update} > {self.track_buffer * 2})")
                     lost_tracks.append(track)
             elif track.state == Track.Tentative:
-                # Keep tentative tracks alive much longer to prevent premature deletion
-                if track.time_since_update <= 30:  # Much larger buffer (was 10)
+                # DEBUG: More aggressive removal of tentative tracks
+                # Reduced from 30 to 15 frames
+                if track.time_since_update <= 15:  # Reduced buffer
                     active_tracks.append(track)
+                    if should_debug and track.time_since_update > 5:
+                        print(f"    WARNING: Tentative track {track.track_id} active but not updated for {track.time_since_update} frames")
                 else:
                     if should_debug:
-                        print(f"    Moving tentative track {track.track_id} to lost (time_since_update: {track.time_since_update})")
+                        print(f"    Moving tentative track {track.track_id} to lost (time_since_update: {track.time_since_update} > 15)")
                     lost_tracks.append(track)
         
         self.tracks = active_tracks
@@ -310,17 +332,23 @@ class BoTSORT:
         # Remove old lost tracks
         old_lost_count = len(self.lost_tracks)
         self.lost_tracks = [t for t in self.lost_tracks
-                           if t.time_since_update <= self.track_buffer * 10]  # Much larger buffer
+                           if t.time_since_update <= self.track_buffer * 5]  # Reduced from 10 to 5
         if should_debug:
             print(f"    Removed {old_lost_count - len(self.lost_tracks)} old lost tracks")
+            print(f"    Active tracks after management: {len(self.tracks)}")
     
     def _get_active_tracks(self):
         """Get active tracks for output"""
         active_tracks = []
         for track in self.tracks:
             # Include both Confirmed and Tentative tracks that are still active
+            # DEBUG: Add additional filtering to prevent ghosting
             if (track.state == Track.Confirmed or track.state == Track.Tentative):
-                active_tracks.append(track)
+                # DEBUG: Don't include tracks that haven't been updated for too long
+                if track.time_since_update <= 10:  # Hard limit to prevent ghosting
+                    active_tracks.append(track)
+                else:
+                    print(f"    FILTERING OUT: Track {track.track_id} (time_since_update: {track.time_since_update})")
         return active_tracks
 
 
@@ -391,15 +419,25 @@ class Track:
             self.kf.predict()
             self.age += 1
             self.time_since_update += 1
-            # Only log every few frames to avoid spam
-            if self.time_since_update % 5 == 0:
+            # DEBUG: More aggressive logging for ghosting detection
+            if self.time_since_update % 3 == 0:  # Log more frequently
                 print(f"      Track {self.track_id} predicted: time_since_update={self.time_since_update}, age={self.age}")
+            
+            # DEBUG: Mark tracks as potential ghosts if not updated for too long
+            if self.time_since_update > 8:  # Earlier warning
+                print(f"      WARNING: Track {self.track_id} potential ghost - not updated for {self.time_since_update} frames")
     
     def update(self, bbox, score, feature=None, class_id=None, should_debug=True):
         """Update track with new detection"""
         old_state = self.state
+        old_time_since_update = self.time_since_update  # DEBUG: Track how long it was ghosting
+        
         self.time_since_update = 0
         self.hits += 1
+        
+        # DEBUG: Log recovery from ghosting
+        if old_time_since_update > 5:
+            print(f"      RECOVERY: Track {self.track_id} recovered after {old_time_since_update} frames of ghosting")
         
         # Update state - confirm after first successful update to prevent ID changes
         if self.state == Track.Tentative and self.hits >= 1:  # Changed from 2 to 1

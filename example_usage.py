@@ -239,6 +239,48 @@ def example_raspberry_pi_settings():
     tracker.process_video(tracker.config.VIDEO_SOURCE)
 
 
+def example_debug_ghost_tracking(video_path="test_video.mp4"):
+    """Example: Debug ghost tracking issues with enhanced logging"""
+    print("=== DEBUG: Ghost Tracking Test ===")
+    
+    # Initialize tracker
+    tracker = YOLOBoTSORTTracker()
+    
+    # Configure for aggressive ghost tracking detection
+    tracker.config.VIDEO_SOURCE = video_path
+    tracker.config.OUTPUT_VIDEO = "debug_output_" + video_path
+    tracker.config.SHOW_VIDEO = True
+    tracker.config.SAVE_VIDEO = True
+    tracker.config.YOLO_CONFIDENCE = 0.5
+    
+    # DEBUG: More aggressive track management to prevent ghosting
+    tracker.config.BOTSORT_TRACKER['track_buffer'] = 30  # Reduced from 60
+    tracker.config.BOTSORT_TRACKER['track_high_thresh'] = 0.6
+    tracker.config.BOTSORT_TRACKER['track_low_thresh'] = 0.2
+    tracker.config.BOTSORT_TRACKER['new_track_thresh'] = 0.5
+    tracker.config.BOTSORT_TRACKER['match_thresh'] = 0.8  # Stricter matching
+    tracker.config.BOTSORT_TRACKER['proximity_thresh'] = 0.6  # Stricter proximity
+    
+    # DEBUG: Enable more frequent debug logging
+    tracker.config.DEBUG_FRAME_INTERVAL = 5  # Log every 5 frames instead of 10
+    
+    print("DEBUG SETTINGS:")
+    print(f"  Video: {video_path}")
+    print(f"  Output: {tracker.config.OUTPUT_VIDEO}")
+    print(f"  Track Buffer: {tracker.config.BOTSORT_TRACKER['track_buffer']}")
+    print(f"  Match Threshold: {tracker.config.BOTSORT_TRACKER['match_thresh']}")
+    print(f"  Debug Interval: {tracker.config.DEBUG_FRAME_INTERVAL}")
+    print("\nWATCH FOR:")
+    print("  - 'POTENTIAL GHOST' warnings")
+    print("  - 'GHOSTING RISK' warnings")
+    print("  - 'FILTERING OUT' messages")
+    print("  - 'RECOVERY' messages when tracks are found again")
+    print("\nPress 'q' to quit")
+    
+    # Process video file
+    tracker.process_video(tracker.config.VIDEO_SOURCE, tracker.config.OUTPUT_VIDEO)
+
+
 def main():
     """Main function with menu"""
     print("YOLO-BoTSORT Tracker Examples")
@@ -248,7 +290,8 @@ def main():
     print("3. Custom settings")
     print("4. Performance optimization")
     print("5. Raspberry Pi 5 optimization")
-    print("6. Run all examples (if available)")
+    print("6. DEBUG: Ghost tracking test")
+    print("7. Run all examples (if available)")
     print("=" * 40)
     
     try:
@@ -268,6 +311,11 @@ def main():
         elif choice == "5":
             example_raspberry_pi_settings()
         elif choice == "6":
+            video_path = input("Enter video file path for debug test (or press Enter for default): ").strip()
+            if not video_path:
+                video_path = "test_video.mp4"
+            example_debug_ghost_tracking(video_path)
+        elif choice == "7":
             print("Running multiple examples...")
             # Note: This would require actual video files
             print("Note: Batch processing requires actual video files")
