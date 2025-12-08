@@ -21,17 +21,39 @@ class Visualizer:
             colors.append(tuple(map(int, color)))
         return colors
     
-    def draw_tracking_results(self, frame, tracks, show_trails=True, show_ids=True):
+    def draw_tracking_results(self, frame, tracks, original_frame_size=None, show_trails=True, show_ids=True):
         """Draw tracking results on frame"""
         annotated_frame = frame.copy()
+        
+        # Only log drawing info occasionally to reduce spam
+        # This is called every frame, so we use a simple counter
+        if not hasattr(self, 'draw_counter'):
+            self.draw_counter = 0
+        self.draw_counter += 1
+        
+        if self.draw_counter % 10 == 0:  # Log every 10 frames
+            print(f"Drawing {len(tracks)} tracks")
+        
+        # Calculate scale factor if original frame size is provided
+        scale_x = scale_y = 1.0
+        if original_frame_size:
+            scale_x = frame.shape[1] / original_frame_size[1]
+            scale_y = frame.shape[0] / original_frame_size[0]
         
         for track in tracks:
             track_id = track.track_id
             bbox = track.bbox
             color = self.colors[track_id % len(self.colors)]
             
-            # Draw bounding box
+            if self.draw_counter % 10 == 0:  # Log every 10 frames
+                print(f"  Drawing track {track_id} (state: {track.state}, hits: {track.hits}, age: {track.age})")
+            
+            # Scale bounding box coordinates
             x1, y1, x2, y2 = map(int, bbox)
+            x1, x2 = int(x1 * scale_x), int(x2 * scale_x)
+            y1, y2 = int(y1 * scale_y), int(y2 * scale_y)
+            
+            # Draw bounding box
             cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color,
                          self.config.LINE_THICKNESS)
             
@@ -62,13 +84,13 @@ class Visualizer:
                           cv2.FONT_HERSHEY_SIMPLEX, self.config.FONT_SIZE,
                           self.config.COLORS['text'], self.config.FONT_THICKNESS)
             
-            # Draw center point
+            # Draw center point (using scaled coordinates)
             center_x = (x1 + x2) // 2
             center_y = (y1 + y2) // 2
             cv2.circle(annotated_frame, (center_x, center_y), 3,
                       self.config.COLORS['center'], -1)
             
-            # Update and draw trail
+            # Update and draw trail (using scaled coordinates)
             if show_trails:
                 self.track_history[track_id].append((center_x, center_y))
                 self._draw_trail(annotated_frame, track_id, color)

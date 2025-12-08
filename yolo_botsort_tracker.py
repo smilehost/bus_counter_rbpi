@@ -142,45 +142,44 @@ class YOLOBoTSORTTracker:
         # Initialize variables
         tracks = []
         
-        # Only run detection and tracking every N frames for performance
-        if frame_count % self.config.PROCESS_EVERY_N_FRAMES == 0:
-            # Start detection timer
-            detection_start = time.time()
-            
-            # YOLO detection
-            results = self.yolo_model(frame, conf=self.config.YOLO_CONFIDENCE,
-                                     iou=self.config.YOLO_IOU_THRESHOLD,
-                                     classes=self.config.YOLO_CLASSES,
-                                     verbose=False)
-            
-            detection_time = time.time() - detection_start
-            self.performance_monitor.add_detection_time(detection_time)
-            
-            # Extract detections
-            detections = self._extract_detections(results[0])
-            
-            # Start tracking timer
-            tracking_start = time.time()
-            
-            # BoTSORT tracking
-            tracks = self.tracker.update(detections, frame)
-            
-            tracking_time = time.time() - tracking_start
-            self.performance_monitor.add_tracking_time(tracking_time)
-            
-            # Update bus counter
-            height = frame.shape[0]
-            self.bus_counter.update(tracks, height)
-        else:
-            # On skipped frames, just get current tracks without updating
-            tracks = self.tracker._get_active_tracks()
+        # Always predict track positions for smooth tracking
+        self.tracker._predict_tracks()
+        
+        # Process every frame for more stable tracking
+        # Start detection timer
+        detection_start = time.time()
+        
+        # YOLO detection
+        results = self.yolo_model(frame, conf=self.config.YOLO_CONFIDENCE,
+                                 iou=self.config.YOLO_IOU_THRESHOLD,
+                                 classes=self.config.YOLO_CLASSES,
+                                 verbose=False)
+        
+        detection_time = time.time() - detection_start
+        self.performance_monitor.add_detection_time(detection_time)
+        
+        # Extract detections
+        detections = self._extract_detections(results[0])
+        
+        # Start tracking timer
+        tracking_start = time.time()
+        
+        # BoTSORT tracking
+        tracks = self.tracker.update(detections, frame)
+        
+        tracking_time = time.time() - tracking_start
+        self.performance_monitor.add_tracking_time(tracking_time)
+        
+        # Update bus counter
+        height = frame.shape[0]
+        self.bus_counter.update(tracks, height)
         
         # Resize frame for display
         display_frame = resize_frame(frame, self.config.DISPLAY_SIZE)
         
         # Draw tracking results (even on skipped frames)
         annotated_frame = self.visualizer.draw_tracking_results(
-            display_frame, tracks, show_trails=True, show_ids=True
+            display_frame, tracks, original_frame_size=frame.shape[:2], show_trails=True, show_ids=True
         )
         
         # Draw counting line
