@@ -17,6 +17,9 @@ except ImportError:
     print("Warning: picamera2 not available. Falling back to OpenCV.")
     PICAMERA2_AVAILABLE = False
 
+# Export PI5_CAMERA_AVAILABLE for compatibility with import statements
+PI5_CAMERA_AVAILABLE = PICAMERA2_AVAILABLE
+
 
 class Pi5Camera:
     """

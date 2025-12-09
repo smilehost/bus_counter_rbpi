@@ -83,6 +83,7 @@ def test_platform_detection():
     """Test platform detection"""
     print("\n=== Testing Platform Detection ===")
     
+    from config import Config
     config = Config()
     
     print(f"Platform: {platform.machine()}")
