@@ -40,7 +40,7 @@ def example_hailo_cam0_tracking():
     # Configure for HAILO and Pi5 cam0
     tracker.config.USE_HAILO = True
     tracker.config.VIDEO_SOURCE = "/dev/video0"  # cam0
-    tracker.config.CAMERA_TYPE = "usb"  # or "rpi" for Pi camera module
+    tracker.config.CAMERA_TYPE = "rpi"  # Using Raspberry Pi camera module
     tracker.config.SHOW_VIDEO = True
     tracker.config.SAVE_VIDEO = False
     

@@ -65,11 +65,11 @@ class Config:
         # Focus on cam0 for Pi5, use default for development
 # --- Video Processing ---
         if self.IS_PI5:
-            # CHANGE: Use integer 0 instead of string "/dev/video0" for better OpenCV compatibility
-            self.VIDEO_SOURCE = 0 
-            self.CAMERA_TYPE = "usb" 
+            # Use string device path for Pi camera module
+            self.VIDEO_SOURCE = "/dev/video0"
+            self.CAMERA_TYPE = "rpi"  # Using Raspberry Pi camera module
             
-            # ADD THESE LINES (Crucial for Pi 5 USB Cam):
+            # Camera settings for Pi camera
             self.CAM_WIDTH = 640
             self.CAM_HEIGHT = 480
             self.CAM_FPS = 30
