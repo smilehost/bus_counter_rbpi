@@ -170,16 +170,20 @@ class YOLOBoTSORTTracker:
             total_frames = 0  # Unknown for camera streams
         
         try:
+            print("Starting frame processing loop...")
             while True:
                 # Read frame from camera
                 if hasattr(self.camera, 'read'):
                     # Pi5 camera or OpenCV camera
                     ret, frame = self.camera.read()
+                    print(f"Frame read: ret={ret}, frame_shape={frame.shape if frame is not None else None}")
                 else:
                     # Fallback
+                    print("Camera doesn't have read method")
                     ret, frame = False, None
                 
                 if not ret or frame is None:
+                    print(f"Failed to read frame: ret={ret}, frame is None={frame is None}")
                     break
                 
                 # Start performance timer
