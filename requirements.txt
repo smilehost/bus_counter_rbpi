@@ -16,3 +16,16 @@ tensorflow>=2.10.0
 mtcnn>=0.1.0
 retina-face>=0.0.12
 psutil>=5.8.0
+
+# HAILO AI Accelerator dependencies
+hailort>=4.17.0
+hailo-platform>=4.17.0
+# Optional: for model compilation and optimization
+# hailo-sdk>=4.17.0
+
+# Raspberry Pi 5 camera support
+picamera2>=0.3.12
+libcamera>=0.2.0
+
+# Performance monitoring for Pi5
+gpustat>=1.1.1

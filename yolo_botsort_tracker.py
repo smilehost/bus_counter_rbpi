@@ -12,6 +12,21 @@ from botsort_tracker import BoTSORT
 from utils import Visualizer, BusCounter, PerformanceMonitor, resize_frame
 from class_names import get_class_name, COCO_CLASS_NAMES
 
+# Import HAILO and Pi5 camera modules
+try:
+    from hailo_yolo_detector import HailoYOLODetector, download_hailo_yolo_model
+    HAILO_AVAILABLE = True
+except ImportError:
+    print("Warning: HAILO detector not available. Using regular YOLO.")
+    HAILO_AVAILABLE = False
+
+try:
+    from pi5_camera import Pi5Camera, create_pi5_camera, print_camera_info
+    PI5_CAMERA_AVAILABLE = True
+except ImportError:
+    print("Warning: Pi5 camera module not available. Using OpenCV.")
+    PI5_CAMERA_AVAILABLE = False
+
 class YOLOBoTSORTTracker:
     """Main tracking class combining YOLO detection with BoTSORT tracking"""
     
@@ -19,11 +34,16 @@ class YOLOBoTSORTTracker:
         # Load configuration
         self.config = Config() if config_path is None else self._load_config(config_path)
         
-        # Initialize YOLO model
-        self.yolo_model = YOLO(self.config.YOLO_MODEL)
+        # Initialize detector (HAILO or regular YOLO)
+        self.detector = self._initialize_detector()
         
         # Initialize BoTSORT tracker
-        self.tracker = BoTSORT(self.config.BOTSORT_TRACKER)
+        # Update ReID settings based on config
+        tracker_config = self.config.BOTSORT_TRACKER.copy()
+        if hasattr(self.config, 'ENABLE_REID'):
+            tracker_config['with_reid'] = self.config.ENABLE_REID
+        
+        self.tracker = BoTSORT(tracker_config)
         
         # Initialize utilities
         self.visualizer = Visualizer(self.config)
@@ -33,20 +53,53 @@ class YOLOBoTSORTTracker:
         # Video writer
         self.video_writer = None
         
+        # Camera setup
+        self.camera = None
+        
         # Device setup
         self.device = self._setup_device()
         
         print(f"YOLO-BoTSORT Tracker initialized")
-        print(f"YOLO Model: {self.config.YOLO_MODEL}")
+        print(f"Detector Type: {'HAILO' if self.config.USE_HAILO else 'YOLO'}")
+        print(f"Model: {self.config.YOLO_MODEL}")
         print(f"Device: {self.device}")
-        print(f"ReID Enabled: {self.config.BOTSORT_TRACKER['with_reid']}")
+        print(f"ReID Enabled: {tracker_config['with_reid']}")
         
         # Print available YOLO classes
         self.print_available_classes()
     
+    def _initialize_detector(self):
+        """Initialize detector (HAILO or regular YOLO)"""
+        if self.config.USE_HAILO and HAILO_AVAILABLE:
+            try:
+                # Check if HAILO model exists, download if needed
+                if not os.path.exists(self.config.YOLO_MODEL):
+                    print(f"HAILO model not found: {self.config.YOLO_MODEL}")
+                    model_name = self.config.YOLO_MODEL.replace('.hef', '')
+                    print(f"Downloading {model_name} from HAILO model zoo...")
+                    self.config.YOLO_MODEL = download_hailo_yolo_model(model_name)
+                
+                # Initialize HAILO detector
+                detector = HailoYOLODetector(self.config.YOLO_MODEL, self.config)
+                print(f"HAILO detector initialized: {self.config.YOLO_MODEL}")
+                return detector
+                
+            except Exception as e:
+                print(f"Failed to initialize HAILO detector: {e}")
+                print("Falling back to regular YOLO detector")
+                self.config.USE_HAILO = False
+        
+        # Fallback to regular YOLO
+        self.config.USE_HAILO = False
+        detector = YOLO(self.config.YOLO_MODEL)
+        print(f"YOLO detector initialized: {self.config.YOLO_MODEL}")
+        return detector
+    
     def _setup_device(self):
         """Setup computation device"""
-        if torch.cuda.is_available():
+        if self.config.USE_HAILO:
+            return "hailo"  # HAILO device
+        elif torch.cuda.is_available():
             device = "cuda"
             print(f"GPU available: {torch.cuda.get_device_name(0)}")
         else:
@@ -62,17 +115,44 @@ class YOLOBoTSORTTracker:
     
     def process_video(self, video_source, output_path=None):
         """Process video file or camera stream"""
-        # Open video capture
-        cap = cv2.VideoCapture(video_source)
         
-        if not cap.isOpened():
-            print(f"Error: Could not open video source {video_source}")
-            return
+        # Initialize camera based on source type
+        if isinstance(video_source, str) and video_source.startswith('/dev/video'):
+            # Pi5 camera with device path
+            if PI5_CAMERA_AVAILABLE:
+                self.camera = create_pi5_camera(
+                    camera_type=self.config.CAMERA_TYPE,
+                    camera_index=video_source,
+                    resolution=self.config.DISPLAY_SIZE,
+                    fps=self.config.fps if hasattr(self.config, 'fps') else 30
+                )
+                print(f"Pi5 camera initialized: {video_source}")
+            else:
+                # Fallback to OpenCV
+                cap = cv2.VideoCapture(video_source)
+                if not cap.isOpened():
+                    print(f"Error: Could not open video source {video_source}")
+                    return
+                self.camera = cap
+        else:
+            # Regular OpenCV camera or video file
+            cap = cv2.VideoCapture(video_source)
+            if not cap.isOpened():
+                print(f"Error: Could not open video source {video_source}")
+                return
+            self.camera = cap
         
         # Get video properties
-        fps = int(cap.get(cv2.CAP_PROP_FPS))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        if hasattr(self.camera, 'get_camera_info'):
+            # Pi5 camera
+            camera_info = self.camera.get_camera_info()
+            fps = camera_info.get('target_fps', 30)
+            width, height = camera_info.get('resolution', self.config.DISPLAY_SIZE)
+        else:
+            # OpenCV camera
+            fps = int(self.camera.get(cv2.CAP_PROP_FPS))
+            width = int(self.camera.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
         
         print(f"Video properties: {width}x{height} @ {fps} FPS")
         
@@ -88,8 +168,15 @@ class YOLOBoTSORTTracker:
         
         try:
             while True:
-                ret, frame = cap.read()
-                if not ret:
+                # Read frame from camera
+                if hasattr(self.camera, 'read'):
+                    # Pi5 camera or OpenCV camera
+                    ret, frame = self.camera.read()
+                else:
+                    # Fallback
+                    ret, frame = False, None
+                
+                if not ret or frame is None:
                     break
                 
                 # Start performance timer
@@ -119,17 +206,31 @@ class YOLOBoTSORTTracker:
                 if frame_count % 30 == 0:
                     stats = self.performance_monitor.get_statistics()
                     counts = self.bus_counter.get_counts()
-                    print(f"Frame {frame_count}/{total_frames} | "
-                          f"FPS: {stats.get('fps', 0):.1f} | "
-                          f"Count: {counts['total']} | "
-                          f"Active Tracks: {len(self.tracker.tracks)}")
+                    
+                    # Add HAILO performance stats if available
+                    if self.config.USE_HAILO and hasattr(self.detector, 'get_performance_stats'):
+                        hailo_stats = self.detector.get_performance_stats()
+                        print(f"Frame {frame_count}/{total_frames} | "
+                              f"FPS: {stats.get('fps', 0):.1f} | "
+                              f"HAILO FPS: {hailo_stats.get('fps', 0):.1f} | "
+                              f"Count: {counts['total']} | "
+                              f"Active Tracks: {len(self.tracker.tracks)}")
+                    else:
+                        print(f"Frame {frame_count}/{total_frames} | "
+                              f"FPS: {stats.get('fps', 0):.1f} | "
+                              f"Count: {counts['total']} | "
+                              f"Active Tracks: {len(self.tracker.tracks)}")
         
         except KeyboardInterrupt:
             print("\nProcessing interrupted by user")
         
         finally:
             # Cleanup
-            cap.release()
+            if hasattr(self.camera, 'release'):
+                self.camera.release()
+            elif self.camera is not None:
+                self.camera.release()
+                
             if self.video_writer:
                 self.video_writer.release()
             cv2.destroyAllWindows()
@@ -154,17 +255,28 @@ class YOLOBoTSORTTracker:
         # Start detection timer
         detection_start = time.time()
         
-        # YOLO detection
-        results = self.yolo_model(frame, conf=self.config.YOLO_CONFIDENCE,
-                                 iou=self.config.YOLO_IOU_THRESHOLD,
-                                 classes=self.config.YOLO_CLASSES,
-                                 verbose=False)
+        # Detection (HAILO or YOLO)
+        if self.config.USE_HAILO:
+            # HAILO inference
+            detections, inference_time = self.detector.detect(
+                frame,
+                confidence_threshold=self.config.YOLO_CONFIDENCE,
+                iou_threshold=self.config.YOLO_IOU_THRESHOLD,
+                classes=self.config.YOLO_CLASSES
+            )
+            detection_time = inference_time
+        else:
+            # Regular YOLO inference
+            results = self.yolo_model(frame, conf=self.config.YOLO_CONFIDENCE,
+                                     iou=self.config.YOLO_IOU_THRESHOLD,
+                                     classes=self.config.YOLO_CLASSES,
+                                     verbose=False)
+            
+            detection_time = time.time() - detection_start
+            # Extract detections
+            detections = self._extract_detections(results[0])
         
-        detection_time = time.time() - detection_start
         self.performance_monitor.add_detection_time(detection_time)
-        
-        # Extract detections
-        detections = self._extract_detections(results[0])
         
         # DEBUG: Log detection info
         if should_debug:
@@ -253,6 +365,25 @@ class YOLOBoTSORTTracker:
             return np.array(detections)
         else:
             return np.array([])
+    
+    def print_camera_info(self):
+        """Print available camera information"""
+        if PI5_CAMERA_AVAILABLE:
+            print_camera_info()
+        else:
+            print("Pi5 camera module not available. Using OpenCV camera detection.")
+            
+            # Basic OpenCV camera detection
+            print("Checking OpenCV cameras:")
+            for i in range(5):
+                cap = cv2.VideoCapture(i)
+                if cap.isOpened():
+                    ret, _ = cap.read()
+                    if ret:
+                        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        print(f"  Camera {i}: {width}x{height}")
+                    cap.release()
     
     def _print_final_statistics(self):
         """Print final tracking statistics"""

@@ -1,12 +1,24 @@
 import os
+import platform
 
 class Config:
     def __init__(self):
+        # --- Platform Detection ---
+        self.IS_RASPBERRY_PI = platform.machine() in ('armv7l', 'aarch64')
+        self.IS_PI5 = self.IS_RASPBERRY_PI and platform.processor() == ''
+        
         # --- YOLO Model Configuration ---
-        self.YOLO_MODEL = "yolo11s.pt"
-        # LOWERED: High confidence kills tracking in crowds. 
+        # Use HAILO-optimized model for Pi5, regular YOLO for development
+        if self.IS_PI5:
+            self.YOLO_MODEL = "yolov8n.hef"  # HAILO compiled model
+            self.USE_HAILO = True
+        else:
+            self.YOLO_MODEL = "yolo11n.pt"  # Regular PyTorch model for development
+            self.USE_HAILO = False
+            
+        # LOWERED: High confidence kills tracking in crowds.
         # 0.4 - 0.5 is usually the sweet spot for tracking.
-        self.YOLO_CONFIDENCE = 0.5  
+        self.YOLO_CONFIDENCE = 0.5
         self.YOLO_IOU_THRESHOLD = 0.6
         self.YOLO_CLASSES = [0]  # Focus ONLY on Person (0) if you are doing passenger counting to save resources
         
@@ -41,17 +53,33 @@ class Config:
         # --- ReID Configuration ---
         # If you have a good GPU, 'osnet_x1_0_msmt17.pt' is much better for multi-person distinction
         # than 'x0_25', though slightly slower.
-        self.REID_MODEL = "osnet_x0_25_msmt17.pt" 
+        self.REID_MODEL = "osnet_x0_25_msmt17.pt"
         self.REID_DEVICE = "cuda" if os.system("nvidia-smi") == 0 else "cpu"
         
+        # --- HAILO Configuration ---
+        self.HAILO_DEVICE = "hailo0"  # Default HAILO device
+        self.HAILO_BATCH_SIZE = 1  # Batch size for HAILO inference
+        self.HAILO_INPUT_FORMAT = "RGB"  # Input format for HAILO
+        
         # --- Video Processing ---
-        self.VIDEO_SOURCE = 0 
+        # Focus on cam0 for Pi5, use default for development
+        if self.IS_PI5:
+            self.VIDEO_SOURCE = "/dev/video0"  # cam0 on Pi5
+            self.CAMERA_TYPE = "usb"  # Can be "usb", "rpi", or "csi"
+        else:
+            self.VIDEO_SOURCE = 0  # Default webcam for development
+            self.CAMERA_TYPE = "usb"
         self.OUTPUT_VIDEO = "output_tracking.mp4"
         self.SAVE_VIDEO = True
         self.SHOW_VIDEO = True
         
         # --- Display Configuration ---
-        self.DISPLAY_SIZE = (1280, 720)
+        # Optimize for Pi5 performance
+        if self.IS_PI5:
+            self.DISPLAY_SIZE = (1024, 768)  # Smaller for Pi5 performance
+        else:
+            self.DISPLAY_SIZE = (1280, 720)  # Full resolution for development
+            
         self.FONT_SIZE = 0.6
         self.FONT_THICKNESS = 2
         self.LINE_THICKNESS = 2
@@ -70,9 +98,17 @@ class Config:
         self.MIN_TRACK_AGE = 3 # Lowered: Count faster
         
         # --- Performance ---
-        self.MAX_DETECTIONS = 100
-        self.PROCESS_EVERY_N_FRAMES = 1
-        self.DEBUG_FRAME_INTERVAL = 10 
+        # Optimize for Pi5 with HAILO 8L
+        if self.IS_PI5:
+            self.MAX_DETECTIONS = 50  # Reduced for Pi5
+            self.PROCESS_EVERY_N_FRAMES = 2  # Skip frames for better performance
+            self.DEBUG_FRAME_INTERVAL = 30  # Less frequent debug on Pi5
+            self.ENABLE_REID = False  # Disable ReID for performance on Pi5
+        else:
+            self.MAX_DETECTIONS = 100
+            self.PROCESS_EVERY_N_FRAMES = 1
+            self.DEBUG_FRAME_INTERVAL = 10
+            self.ENABLE_REID = True
     
     def __getitem__(self, key):
         return getattr(self, key)
