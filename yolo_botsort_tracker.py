@@ -270,10 +270,10 @@ class YOLOBoTSORTTracker:
             detection_time = inference_time
         else:
             # Regular YOLO inference
-            results = self.yolo_model(frame, conf=self.config.YOLO_CONFIDENCE,
-                                     iou=self.config.YOLO_IOU_THRESHOLD,
-                                     classes=self.config.YOLO_CLASSES,
-                                     verbose=False)
+            results = self.detector(frame, conf=self.config.YOLO_CONFIDENCE,
+                                   iou=self.config.YOLO_IOU_THRESHOLD,
+                                   classes=self.config.YOLO_CLASSES,
+                                   verbose=False)
             
             detection_time = time.time() - detection_start
             # Extract detections
