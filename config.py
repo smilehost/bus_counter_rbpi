@@ -63,12 +63,23 @@ class Config:
         
         # --- Video Processing ---
         # Focus on cam0 for Pi5, use default for development
+# --- Video Processing ---
         if self.IS_PI5:
-            self.VIDEO_SOURCE = "/dev/video0"  # cam0 on Pi5
-            self.CAMERA_TYPE = "usb"  # Can be "usb", "rpi", or "csi"
+            # CHANGE: Use integer 0 instead of string "/dev/video0" for better OpenCV compatibility
+            self.VIDEO_SOURCE = 0 
+            self.CAMERA_TYPE = "usb" 
+            
+            # ADD THESE LINES (Crucial for Pi 5 USB Cam):
+            self.CAM_WIDTH = 640
+            self.CAM_HEIGHT = 480
+            self.CAM_FPS = 30
         else:
-            self.VIDEO_SOURCE = 0  # Default webcam for development
+            self.VIDEO_SOURCE = 0
             self.CAMERA_TYPE = "usb"
+            self.CAM_WIDTH = 1280
+            self.CAM_HEIGHT = 720
+            self.CAM_FPS = 30
+            
         self.OUTPUT_VIDEO = "output_tracking.mp4"
         self.SAVE_VIDEO = True
         self.SHOW_VIDEO = True
