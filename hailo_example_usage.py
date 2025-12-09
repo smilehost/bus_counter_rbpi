@@ -17,7 +17,7 @@ try:
     from pi5_camera import create_pi5_camera, print_camera_info, PI5_CAMERA_AVAILABLE
 except ImportError as e:
     print(f"Error importing HAILO/Pi5 modules: {e}")
-    print("Please ensure HAILO SDK and Pi5 camera modules are properly installed")
+    print("Please ensure HAILO SDK and GStreamer packages are properly installed")
     sys.exit(1)
 
 
@@ -31,7 +31,7 @@ def example_hailo_cam0_tracking():
         return
     
     if not PI5_CAMERA_AVAILABLE:
-        print("Error: Pi5 camera module not available")
+        print("Error: Pi5 camera (GStreamer) not available")
         return
     
     # Initialize tracker with HAILO config
@@ -156,8 +156,9 @@ def example_hailo_performance_test():
             
             # Run for a short duration
             start_time = time.time()
-            frame_count = 0# Initialize camera
-            # We add 'and False' to PI5_CAMERA_AVAILABLE to force it to skip to the 'else' block
+            frame_count = 0
+            # Initialize camera
+            # Initialize camera
             # since you are using a USB camera, not the Pi Camera Module.
             # Initialize camera
             if PI5_CAMERA_AVAILABLE: 
@@ -222,7 +223,7 @@ def example_hailo_camera_info():
     
     # Print HAILO availability
     print(f"HAILO SDK Available: {HAILO_AVAILABLE}")
-    print(f"Pi5 Camera Module Available: {PI5_CAMERA_AVAILABLE}")
+    print(f"Pi5 Camera Module (GStreamer) Available: {PI5_CAMERA_AVAILABLE}")
     
     # Print camera information
     if PI5_CAMERA_AVAILABLE:

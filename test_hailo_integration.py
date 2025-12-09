@@ -54,7 +54,7 @@ def test_imports():
     try:
         from pi5_camera import Pi5Camera, PI5_CAMERA_AVAILABLE
         if PI5_CAMERA_AVAILABLE:
-            print("✓ Pi5 Camera Module: Available")
+            print("✓ Pi5 Camera Module (GStreamer): Available")
             pi5_camera_available = True
         else:
             print("✗ Pi5 Camera Module: Not available")

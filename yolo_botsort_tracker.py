@@ -21,8 +21,7 @@ except ImportError:
     HAILO_AVAILABLE = False
 
 try:
-    from pi5_camera import Pi5Camera, create_pi5_camera, print_camera_info
-    PI5_CAMERA_AVAILABLE = True
+    from pi5_camera import Pi5Camera, create_pi5_camera, print_camera_info, PI5_CAMERA_AVAILABLE
 except ImportError:
     print("Warning: Pi5 camera module not available. Using OpenCV.")
     PI5_CAMERA_AVAILABLE = False
@@ -164,7 +163,11 @@ class YOLOBoTSORTTracker:
         
         # Process frames
         frame_count = 0
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        # Get total frame count if available (may not be available for camera streams)
+        if hasattr(self.camera, 'get'):
+            total_frames = int(self.camera.get(cv2.CAP_PROP_FRAME_COUNT))
+        else:
+            total_frames = 0  # Unknown for camera streams
         
         try:
             while True:
