@@ -94,9 +94,13 @@ For Raspberry Pi 5 deployment with HAILO 8L AI Accelerator:
 pip install hailort>=4.17.0
 pip install hailo-platform>=4.17.0
 
-# Install Pi5 camera support
-pip install picamera2>=0.3.12
-pip install libcamera>=0.2.0
+# Install system packages for GStreamer camera support
+sudo apt-get update
+sudo apt-get install python3-gi python3-gst-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-tools gstreamer1.0-libav
+sudo apt-get install libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev
+
+# For Raspberry Pi camera specifically
+sudo apt-get install gstreamer1.0-rpicamsrc
 
 # Install CPU version of PyTorch (HAILO handles inference)
 pip install torch==2.3.1+cpu
@@ -104,6 +108,21 @@ pip install torchvision==0.18.1+cpu
 
 # Install other dependencies
 pip install -r requirements.txt
+```
+
+### GStreamer Camera Support
+
+The project now uses GStreamer instead of picamera2 for Raspberry Pi camera support, which is compatible with Python 3.10:
+
+**Benefits:**
+- Compatible with Python 3.10 (no need for Python 3.11+)
+- Better performance and stability
+- Hardware-accelerated video processing
+- More flexible pipeline configuration
+
+**GStreamer Pipeline Example:**
+```
+rpicamsrc ! video/x-raw,width=1920,height=1080,framerate=30/1 ! videoconvert ! video/x-raw,format=BGR ! appsink drop=1
 ```
 
 ## Quick Start
@@ -163,7 +182,7 @@ USE_HAILO = True
 YOLO_MODEL = "yolov8n.hef"  # HAILO compiled model
 HAILO_DEVICE = "hailo0"
 VIDEO_SOURCE = "/dev/video0"  # cam0
-CAMERA_TYPE = "usb"  # or "rpi" for Pi camera
+CAMERA_TYPE = "rpi"  # or "usb" for USB camera (uses GStreamer for RPi camera)
 ENABLE_REID = False  # Disabled for performance
 
 # Pi5 Performance Optimizations
@@ -296,10 +315,12 @@ MIN_TRACK_AGE = 10  # Require 10 frames before counting
    - Use larger YOLO model
 
 4. **Camera Not Found**:
-    - Check camera index (try 0, 1, 2...)
-    - Verify camera drivers
-    - Test with other applications
-    - For Pi5, check `/dev/video0` device permissions
+     - Check camera index (try 0, 1, 2...)
+     - Verify camera drivers
+     - Test with other applications
+     - For Pi5, check `/dev/video0` device permissions
+     - For RPi camera with GStreamer, ensure gstreamer1.0-rpicamsrc is installed
+     - Test GStreamer pipeline: `gst-launch-1.0 rpicamsrc ! videoconvert ! autovideosink`
 
 5. **HAILO Issues**:
     - Verify HAILO SDK installation: `hailortcli query`
@@ -359,9 +380,12 @@ processed_frame = tracker.process_frame(frame, frame_count)
 from hailo_yolo_detector import HailoYOLODetector
 detector = HailoYOLODetector("yolov8n.hef", config)
 
-# Initialize Pi5 camera
+# Initialize Pi5 camera (auto-detects GStreamer for RPi camera)
 from pi5_camera import create_pi5_camera
-camera = create_pi5_camera(camera_index="/dev/video0")
+camera = create_pi5_camera(camera_type="auto", camera_index="/dev/video0")
+
+# Test camera functionality
+python test_gstreamer_camera.py
 ```
 
 ## HAILO 8L Specific Features
@@ -378,7 +402,8 @@ camera = create_pi5_camera(camera_index="/dev/video0")
 - Automatic fallback to CPU if HAILO unavailable
 
 ### Camera Integration
-- Native Pi5 camera module support
+- GStreamer-based Pi5 camera module support (Python 3.10 compatible)
 - USB camera optimization for cam0
 - Automatic camera type detection
 - Hardware-specific optimizations
+- No dependency on picamera2 (requires Python 3.11+)

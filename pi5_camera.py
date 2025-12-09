@@ -9,16 +9,21 @@ import time
 import platform
 from typing import Optional, Tuple, Dict, Any
 
-try:
-    from picamera2 import Picamera2
-    from libcamera import controls
-    PICAMERA2_AVAILABLE = True
-except ImportError:
-    print("Warning: picamera2 not available. Falling back to OpenCV.")
-    PICAMERA2_AVAILABLE = False
+# Check if GStreamer is available for Pi camera support
+import subprocess
+import sys
 
-# Export PI5_CAMERA_AVAILABLE for compatibility with import statements
-PI5_CAMERA_AVAILABLE = PICAMERA2_AVAILABLE
+def check_gstreamer():
+    """Check if GStreamer is available"""
+    try:
+        result = subprocess.run([sys.executable, "-c", "import cv2; print(cv2.getBuildInformation())"],
+                              capture_output=True, text=True)
+        return "GStreamer" in result.stdout
+    except:
+        return False
+
+GSTREAMER_AVAILABLE = check_gstreamer()
+PI5_CAMERA_AVAILABLE = GSTREAMER_AVAILABLE
 
 
 class Pi5Camera:
@@ -27,7 +32,7 @@ class Pi5Camera:
     Supports both USB cameras and Pi camera modules with focus on cam0
     """
     
-    def __init__(self, camera_type: str = "auto", camera_index: str = "/dev/video0", 
+    def __init__(self, camera_type: str = "auto", camera_index: str = "/dev/video0",
                  resolution: Tuple[int, int] = (1920, 1080), fps: int = 30):
         """
         Initialize Pi5 camera
@@ -43,7 +48,6 @@ class Pi5Camera:
         self.resolution = resolution
         self.fps = fps
         self.cap = None
-        self.picam2 = None
         self.is_pi5 = self._detect_pi5()
         self.frame_count = 0
         self.last_frame_time = 0
@@ -76,16 +80,16 @@ class Pi5Camera:
         
         print(f"Initializing camera: type={self.camera_type}, index={self.camera_index}")
         
-        if self.camera_type == "rpi" and PICAMERA2_AVAILABLE:
-            self._initialize_picamera2()
+        if self.camera_type == "rpi" and GSTREAMER_AVAILABLE:
+            self._initialize_gstreamer_camera()
         else:
             self._initialize_opencv_camera()
     
     def _auto_detect_camera(self) -> str:
         """Auto-detect available camera type"""
-        # Try Pi camera first if available
-        if PICAMERA2_AVAILABLE and self._check_picamera_available():
-            print("Detected Raspberry Pi camera module")
+        # Try Pi camera first if GStreamer is available
+        if GSTREAMER_AVAILABLE and self._check_picamera_available():
+            print("Detected Raspberry Pi camera module (using GStreamer)")
             return "rpi"
         
         # Fall back to USB camera
@@ -93,57 +97,59 @@ class Pi5Camera:
         return "usb"
     
     def _check_picamera_available(self) -> bool:
-        """Check if Pi camera is available"""
+        """Check if Pi camera is available using GStreamer"""
         try:
-            # Try to create a temporary Picamera2 instance
-            test_cam = Picamera2()
-            test_cam.stop()
-            return True
+            # Try to create a test GStreamer pipeline to check if Pi camera is available
+            pipeline = (
+                "rpicamsrc ! "
+                "video/x-raw,width=640,height=480,framerate=30/1 ! "
+                "videoconvert ! "
+                "appsink drop=1"
+            )
+            test_cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+            if test_cap.isOpened():
+                test_cap.release()
+                return True
+            return False
         except:
             return False
     
-    def _initialize_picamera2(self):
-        """Initialize Raspberry Pi camera using picamera2"""
+    def _initialize_gstreamer_camera(self):
+        """Initialize Raspberry Pi camera using GStreamer pipeline"""
         try:
-            self.picam2 = Picamera2()
-            
-            # Configure camera for optimal performance
-            config = self.picam2.create_video_configuration(
-                main=self.config,
-                lores=None,
-                display=None,
-                transform=None,
-                colour_space=self.config['format']
+            # Create GStreamer pipeline for Raspberry Pi camera
+            # Using rpicamsrc for Pi camera module
+            pipeline = (
+                f"rpicamsrc "
+                f"preview=false "
+                f"! video/x-raw,width={self.resolution[0]},height={self.resolution[1]},framerate={self.fps}/1 "
+                f"! videoconvert "
+                f"! video/x-raw,format=BGR "
+                f"! appsink drop=1"
             )
             
-            # Apply configuration
-            self.picam2.configure(config)
+            print(f"Using GStreamer pipeline: {pipeline}")
             
-            # Set camera controls for better quality
-            controls_dict = {
-                controls.AeEnable: True,          # Auto exposure
-                controls.AwbEnable: True,         # Auto white balance
-                controls.AfMode: controls.AfModeEnum.Continuous,  # Auto focus (if available)
-                controls.NoiseReductionMode: controls.NoiseReductionModeEnum.HighQuality,
-                controls.Sharpness: 1.0,
-                controls.Contrast: 1.0,
-                controls.Saturation: 1.0,
-            }
+            # Initialize OpenCV with GStreamer backend
+            self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
             
-            # Apply controls
-            self.picam2.set_controls(controls_dict)
-            
-            # Start camera
-            self.picam2.start()
+            if not self.cap.isOpened():
+                raise RuntimeError("Failed to open GStreamer pipeline for Pi camera")
             
             # Wait for camera to stabilize
             time.sleep(2.0)
             
-            print("PiCamera2 initialized successfully")
+            # Verify settings
+            actual_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            actual_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            actual_fps = self.cap.get(cv2.CAP_PROP_FPS)
+            
+            print(f"GStreamer Pi camera initialized: {actual_width}x{actual_height} @ {actual_fps:.1f} FPS")
             
         except Exception as e:
-            print(f"Failed to initialize PiCamera2: {e}")
-            print("Falling back to OpenCV camera")
+            print(f"Failed to initialize GStreamer camera: {e}")
+            print("Falling back to USB camera")
+            self.camera_type = "usb"
             self._initialize_opencv_camera()
     
     def _initialize_opencv_camera(self):
@@ -205,26 +211,8 @@ class Pi5Camera:
         current_time = time.time()
         
         try:
-            if self.picam2 is not None:
-                # Use picamera2
-                frame = self.picam2.capture_array()
-                
-                # Convert from RGB to BGR for OpenCV compatibility
-                if frame.shape[2] == 3:  # RGB
-                    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                
-                # Calculate actual FPS
-                if self.last_frame_time > 0:
-                    frame_time = current_time - self.last_frame_time
-                    self.actual_fps = 1.0 / frame_time
-                
-                self.last_frame_time = current_time
-                self.frame_count += 1
-                
-                return True, frame
-            
-            elif self.cap is not None:
-                # Use OpenCV
+            if self.cap is not None:
+                # Use OpenCV (with or without GStreamer backend)
                 ret, frame = self.cap.read()
                 
                 if ret:
@@ -248,16 +236,13 @@ class Pi5Camera:
     def release(self):
         """Release camera resources"""
         try:
-            if self.picam2 is not None:
-                self.picam2.stop()
-                self.picam2.close()
-                self.picam2 = None
-                print("PiCamera2 released")
-            
             if self.cap is not None:
                 self.cap.release()
                 self.cap = None
-                print("OpenCV camera released")
+                if self.camera_type == "rpi":
+                    print("GStreamer Pi camera released")
+                else:
+                    print("OpenCV camera released")
                 
         except Exception as e:
             print(f"Error releasing camera: {e}")
@@ -274,12 +259,7 @@ class Pi5Camera:
             'is_pi5': self.is_pi5
         }
         
-        if self.picam2 is not None:
-            # Get PiCamera2 specific info
-            sensor_modes = self.picam2.sensor_modes
-            info['sensor_modes'] = len(sensor_modes) if sensor_modes else 0
-            
-        elif self.cap is not None:
+        if self.cap is not None:
             # Get OpenCV camera specific info
             info['backend'] = self.cap.getBackendName()
             info['buffer_size'] = int(self.cap.get(cv2.CAP_PROP_BUFFERSIZE))
@@ -293,30 +273,26 @@ class Pi5Camera:
         """Set camera resolution"""
         self.resolution = (width, height)
         
-        if self.picam2 is not None:
-            # Reconfigure picamera2
-            self.config['resolution'] = (width, height)
-            config = self.picam2.create_video_configuration(main=self.config)
-            self.picam2.configure(config)
-        
-        elif self.cap is not None:
+        if self.cap is not None:
             # Set OpenCV camera resolution
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+            
+            # For GStreamer, we need to reinitialize the pipeline with new resolution
+            if self.camera_type == "rpi":
+                print("Note: For GStreamer Pi camera, you may need to reinitialize the camera for resolution changes to take effect.")
     
     def set_fps(self, fps: int):
         """Set camera FPS"""
         self.fps = fps
         
-        if self.picam2 is not None:
-            # Reconfigure picamera2
-            self.config['fps'] = fps
-            config = self.picam2.create_video_configuration(main=self.config)
-            self.picam2.configure(config)
-        
-        elif self.cap is not None:
+        if self.cap is not None:
             # Set OpenCV camera FPS
             self.cap.set(cv2.CAP_PROP_FPS, fps)
+            
+            # For GStreamer, we need to reinitialize the pipeline with new FPS
+            if self.camera_type == "rpi":
+                print("Note: For GStreamer Pi camera, you may need to reinitialize the camera for FPS changes to take effect.")
     
     def __enter__(self):
         """Context manager entry"""
@@ -353,17 +329,25 @@ def find_available_cameras() -> list:
     """
     cameras = []
     
-    # Check for Pi camera
-    if PICAMERA2_AVAILABLE:
+    # Check for Pi camera using GStreamer
+    if GSTREAMER_AVAILABLE:
         try:
-            test_cam = Picamera2()
-            cameras.append({
-                'type': 'rpi',
-                'index': 'picamera',
-                'name': 'Raspberry Pi Camera',
-                'available': True
-            })
-            test_cam.stop()
+            # Try to create a test GStreamer pipeline to check if Pi camera is available
+            pipeline = (
+                "rpicamsrc ! "
+                "video/x-raw,width=640,height=480,framerate=30/1 ! "
+                "videoconvert ! "
+                "appsink drop=1"
+            )
+            test_cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+            if test_cap.isOpened():
+                cameras.append({
+                    'type': 'rpi',
+                    'index': 'gstreamer',
+                    'name': 'Raspberry Pi Camera (GStreamer)',
+                    'available': True
+                })
+                test_cap.release()
         except:
             pass
     

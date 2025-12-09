@@ -21,7 +21,13 @@ psutil>=5.8.0
 # Optional: for model compilation and optimization
 # hailo-sdk>=4.17.0
 
-# Raspberry Pi 5 camera support
+# Raspberry Pi camera support with GStreamer
+# Note: System packages need to be installed separately:
+# sudo apt-get update
+# sudo apt-get install python3-gi python3-gst-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-tools gstreamer1.0-libav
+# sudo apt-get install libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev
+# For Raspberry Pi camera specifically:
+# sudo apt-get install gstreamer1.0-rpicamsrc
 
 # Performance monitoring for Pi5
 gpustat>=1.1.1
