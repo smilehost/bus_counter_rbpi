@@ -98,43 +98,89 @@ class Pi5Camera:
     
     def _check_picamera_available(self) -> bool:
         """Check if Pi camera is available using GStreamer"""
-        try:
-            # Try to create a test GStreamer pipeline to check if Pi camera is available
-            pipeline = (
-                "rpicamsrc ! "
-                "video/x-raw,width=640,height=480,framerate=30/1 ! "
-                "videoconvert ! "
-                "appsink drop=1"
-            )
-            test_cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-            if test_cap.isOpened():
-                test_cap.release()
-                return True
-            return False
-        except:
-            return False
+        pipelines = [
+            # Try libcamerasrc first (newer Pi setups)
+            "libcamerasrc ! video/x-raw,width=640,height=480,framerate=30/1 ! videoconvert ! appsink drop=1",
+            # Try rpicamsrc (older Pi setups)
+            "rpicamsrc ! video/x-raw,width=640,height=480,framerate=30/1 ! videoconvert ! appsink drop=1",
+            # Try v4l2src as fallback
+            "v4l2src device=/dev/video0 ! video/x-raw,width=640,height=480,framerate=30/1 ! videoconvert ! appsink drop=1"
+        ]
+        
+        for pipeline in pipelines:
+            try:
+                test_cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+                if test_cap.isOpened():
+                    ret, frame = test_cap.read()
+                    test_cap.release()
+                    if ret and frame is not None:
+                        return True
+            except:
+                pass
+        
+        return False
     
     def _initialize_gstreamer_camera(self):
         """Initialize Raspberry Pi camera using GStreamer pipeline"""
         try:
-            # Create GStreamer pipeline for Raspberry Pi camera
-            # Using rpicamsrc for Pi camera module
-            pipeline = (
-                f"rpicamsrc "
-                f"preview=false "
-                f"! video/x-raw,width={self.resolution[0]},height={self.resolution[1]},framerate={self.fps}/1 "
-                f"! videoconvert "
-                f"! video/x-raw,format=BGR "
-                f"! appsink drop=1"
-            )
+            # Try different GStreamer pipeline configurations for Raspberry Pi camera
+            pipelines = [
+                # Pipeline 1: Using libcamera source (newer Pi 5 setups)
+                (
+                    f"libcamerasrc "
+                    f"! video/x-raw,width={self.resolution[0]},height={self.resolution[1]},framerate={self.fps}/1 "
+                    f"! videoconvert "
+                    f"! video/x-raw,format=BGR "
+                    f"! appsink drop=1"
+                ),
+                # Pipeline 2: Using rpicamsrc (older Pi setups)
+                (
+                    f"rpicamsrc "
+                    f"preview=false "
+                    f"! video/x-raw,width={self.resolution[0]},height={self.resolution[1]},framerate={self.fps}/1 "
+                    f"! videoconvert "
+                    f"! video/x-raw,format=BGR "
+                    f"! appsink drop=1"
+                ),
+                # Pipeline 3: Using v4l2src as fallback
+                (
+                    f"v4l2src device=/dev/video0 "
+                    f"! video/x-raw,width={self.resolution[0]},height={self.resolution[1]},framerate={self.fps}/1 "
+                    f"! videoconvert "
+                    f"! video/x-raw,format=BGR "
+                    f"! appsink drop=1"
+                )
+            ]
             
-            print(f"Using GStreamer pipeline: {pipeline}")
+            pipeline_success = False
+            for i, pipeline in enumerate(pipelines, 1):
+                try:
+                    print(f"Attempting GStreamer pipeline {i}: {pipeline}")
+                    
+                    # Initialize OpenCV with GStreamer backend
+                    self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+                    
+                    if self.cap.isOpened():
+                        # Test if we can actually read a frame
+                        ret, test_frame = self.cap.read()
+                        if ret and test_frame is not None:
+                            pipeline_success = True
+                            print(f"GStreamer pipeline {i} successful")
+                            break
+                        else:
+                            self.cap.release()
+                    else:
+                        self.cap.release()
+                        
+                except Exception as pipeline_error:
+                    print(f"Pipeline {i} failed: {pipeline_error}")
+                    if self.cap is not None:
+                        self.cap.release()
+                    self.cap = None
+                    continue
             
-            # Initialize OpenCV with GStreamer backend
-            self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-            
-            if not self.cap.isOpened():
-                raise RuntimeError("Failed to open GStreamer pipeline for Pi camera")
+            if not pipeline_success:
+                raise RuntimeError("All GStreamer pipeline attempts failed")
             
             # Wait for camera to stabilize
             time.sleep(2.0)
@@ -331,25 +377,29 @@ def find_available_cameras() -> list:
     
     # Check for Pi camera using GStreamer
     if GSTREAMER_AVAILABLE:
-        try:
-            # Try to create a test GStreamer pipeline to check if Pi camera is available
-            pipeline = (
-                "rpicamsrc ! "
-                "video/x-raw,width=640,height=480,framerate=30/1 ! "
-                "videoconvert ! "
-                "appsink drop=1"
-            )
-            test_cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-            if test_cap.isOpened():
-                cameras.append({
-                    'type': 'rpi',
-                    'index': 'gstreamer',
-                    'name': 'Raspberry Pi Camera (GStreamer)',
-                    'available': True
-                })
-                test_cap.release()
-        except:
-            pass
+        pipelines = [
+            ("libcamerasrc", "Raspberry Pi Camera (libcamera)"),
+            ("rpicamsrc", "Raspberry Pi Camera (rpicamsrc)"),
+            ("v4l2src device=/dev/video0", "Raspberry Pi Camera (V4L2)")
+        ]
+        
+        for pipeline_source, camera_name in pipelines:
+            try:
+                pipeline = f"{pipeline_source} ! video/x-raw,width=640,height=480,framerate=30/1 ! videoconvert ! appsink drop=1"
+                test_cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+                if test_cap.isOpened():
+                    ret, frame = test_cap.read()
+                    test_cap.release()
+                    if ret and frame is not None:
+                        cameras.append({
+                            'type': 'rpi',
+                            'index': pipeline_source,
+                            'name': camera_name,
+                            'available': True
+                        })
+                        break  # Found working Pi camera, stop checking other pipelines
+            except:
+                pass
     
     # Check for USB cameras
     for i in range(5):  # Check first 5 camera indices

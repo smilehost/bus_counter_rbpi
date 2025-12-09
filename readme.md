@@ -99,7 +99,9 @@ sudo apt-get update
 sudo apt-get install python3-gi python3-gst-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-tools gstreamer1.0-libav
 sudo apt-get install libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev
 
-# For Raspberry Pi camera specifically
+# For Raspberry Pi camera specifically (Pi 5 uses libcamera)
+sudo apt-get install gstreamer1.0-libcamera
+# For older Pi models:
 sudo apt-get install gstreamer1.0-rpicamsrc
 
 # Install CPU version of PyTorch (HAILO handles inference)
@@ -120,9 +122,21 @@ The project now uses GStreamer instead of picamera2 for Raspberry Pi camera supp
 - Hardware-accelerated video processing
 - More flexible pipeline configuration
 
-**GStreamer Pipeline Example:**
+**GStreamer Pipeline Examples:**
+
+For Raspberry Pi 5 (using libcamera):
+```
+libcamerasrc ! video/x-raw,width=1920,height=1080,framerate=30/1 ! videoconvert ! video/x-raw,format=BGR ! appsink drop=1
+```
+
+For older Raspberry Pi models (using rpicamsrc):
 ```
 rpicamsrc ! video/x-raw,width=1920,height=1080,framerate=30/1 ! videoconvert ! video/x-raw,format=BGR ! appsink drop=1
+```
+
+Fallback using V4L2:
+```
+v4l2src device=/dev/video0 ! video/x-raw,width=1920,height=1080,framerate=30/1 ! videoconvert ! video/x-raw,format=BGR ! appsink drop=1
 ```
 
 ## Quick Start
