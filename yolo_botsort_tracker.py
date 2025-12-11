@@ -331,10 +331,11 @@ class YOLOBoTSORTTracker:
             # Regular YOLO inference
             print(f"[DEBUG] Using YOLO inference...")
             try:
-                results = self.detector(frame, conf=self.config.YOLO_CONFIDENCE,
-                                       iou=self.config.YOLO_IOU_THRESHOLD,
-                                       classes=self.config.YOLO_CLASSES,
-                                       verbose=False)
+                # Use the correct YOLO API - results() method instead of direct call
+                results = self.detector.predict(frame, conf=self.config.YOLO_CONFIDENCE,
+                                         iou=self.config.YOLO_IOU_THRESHOLD,
+                                         classes=self.config.YOLO_CLASSES,
+                                         verbose=False)
                 
                 detection_time = time.time() - detection_start
                 # Extract detections
