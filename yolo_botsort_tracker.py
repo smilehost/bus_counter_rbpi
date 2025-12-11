@@ -113,35 +113,63 @@ class YOLOBoTSORTTracker:
     def process_video(self, video_source, output_path=None):
         """Process video file or camera stream"""
         
+        print(f"[DEBUG] Initializing camera with source: {video_source}")
+        print(f"[DEBUG] Video source type: {type(video_source)}")
+        
         # Initialize camera using enhanced camera module (enforced)
-        if isinstance(video_source, str) and video_source.startswith('/dev/video'):
+        if isinstance(video_source, (str, int)) and (str(video_source).startswith('/dev/video') or isinstance(video_source, int)):
             # Always use enhanced camera
-            self.camera = create_enhanced_camera(
-                width=self.config.CAM_WIDTH,
-                height=self.config.CAM_HEIGHT,
-                fps=self.config.CAM_FPS,
-                preferred_method=self.config.PREFERRED_CAMERA_METHOD
-            )
-            print(f"Enhanced camera initialized: {video_source}")
+            print(f"[DEBUG] Creating enhanced camera...")
+            try:
+                self.camera = create_enhanced_camera(
+                    width=self.config.CAM_WIDTH,
+                    height=self.config.CAM_HEIGHT,
+                    fps=self.config.CAM_FPS,
+                    preferred_method=self.config.PREFERRED_CAMERA_METHOD
+                )
+                print(f"[DEBUG] Enhanced camera created successfully")
+                if hasattr(self.camera, 'get_camera_info'):
+                    camera_info = self.camera.get_camera_info()
+                    print(f"[DEBUG] Camera info: {camera_info}")
+            except Exception as e:
+                print(f"[ERROR] Failed to create enhanced camera: {e}")
+                import traceback
+                traceback.print_exc()
+                return
         else:
             # Regular OpenCV camera or video file
+            print(f"[DEBUG] Creating OpenCV camera...")
             cap = cv2.VideoCapture(video_source)
             if not cap.isOpened():
-                print(f"Error: Could not open video source {video_source}")
+                print(f"[ERROR] Could not open video source {video_source}")
                 return
             self.camera = cap
+            print(f"[DEBUG] OpenCV camera created successfully")
         
         # Get video properties
-        if hasattr(self.camera, 'get_camera_info'):
-            # Pi5 camera
-            camera_info = self.camera.get_camera_info()
-            fps = camera_info.get('target_fps', 30)
-            width, height = camera_info.get('resolution', self.config.DISPLAY_SIZE)
-        else:
-            # OpenCV camera
-            fps = int(self.camera.get(cv2.CAP_PROP_FPS))
-            width = int(self.camera.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        print(f"[DEBUG] Getting video properties...")
+        try:
+            if hasattr(self.camera, 'get_camera_info'):
+                # Pi5 camera
+                print(f"[DEBUG] Using Pi5 camera method...")
+                camera_info = self.camera.get_camera_info()
+                fps = camera_info.get('target_fps', 30)
+                width, height = camera_info.get('resolution', self.config.DISPLAY_SIZE)
+                print(f"[DEBUG] Pi5 camera info: {camera_info}")
+            else:
+                # OpenCV camera
+                print(f"[DEBUG] Using OpenCV camera method...")
+                fps = int(self.camera.get(cv2.CAP_PROP_FPS))
+                width = int(self.camera.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                print(f"[DEBUG] OpenCV camera properties - FPS: {fps}, Width: {width}, Height: {height}")
+            
+            print(f"[DEBUG] Final video properties: {width}x{height} @ {fps} FPS")
+        except Exception as e:
+            print(f"[ERROR] Failed to get video properties: {e}")
+            import traceback
+            traceback.print_exc()
+            return
         
         print(f"Video properties: {width}x{height} @ {fps} FPS")
         
@@ -155,17 +183,35 @@ class YOLOBoTSORTTracker:
         frame_count = 0
         total_frames = int(self.camera.get(cv2.CAP_PROP_FRAME_COUNT)) if hasattr(self.camera, 'get') else 0
         
+        print(f"[DEBUG] Starting frame processing loop...")
+        print(f"[DEBUG] Total frames: {total_frames}")
+        print(f"[DEBUG] Camera has 'read' method: {hasattr(self.camera, 'read')}")
+        print(f"[DEBUG] Camera type: {type(self.camera)}")
+        
         try:
+            # Test initial frame read
+            print(f"[DEBUG] Testing initial frame read...")
+            if hasattr(self.camera, 'read'):
+                ret, test_frame = self.camera.read()
+                print(f"[DEBUG] Initial frame read - Success: {ret}, Frame shape: {test_frame.shape if test_frame is not None else None}")
+            else:
+                print(f"[ERROR] Camera does not have 'read' method!")
+                return
+                
             while True:
+                print(f"[DEBUG] Reading frame {frame_count}...")
                 # Read frame from camera
                 if hasattr(self.camera, 'read'):
                     # Pi5 camera or OpenCV camera
                     ret, frame = self.camera.read()
+                    print(f"[DEBUG] Frame read result - Success: {ret}, Frame shape: {frame.shape if frame is not None else None}")
                 else:
                     # Fallback
+                    print(f"[ERROR] Camera does not have 'read' method!")
                     ret, frame = False, None
                 
                 if not ret or frame is None:
+                    print(f"[ERROR] Failed to read frame {frame_count} - ret: {ret}, frame is None: {frame is None}")
                     break
                 
                 # Start performance timer

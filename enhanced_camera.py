@@ -377,6 +377,9 @@ class EnhancedCamera:
         print("\n" + "="*50)
         print("INITIALIZING ENHANCED CAMERA")
         print("="*50)
+        print(f"[DEBUG] Preferred method: {self.preferred_method}")
+        print(f"[DEBUG] Target resolution: {self.width}x{self.height}")
+        print(f"[DEBUG] Target FPS: {self.fps}")
         
         # Define methods to try in order
         methods = []
@@ -401,14 +404,22 @@ class EnhancedCamera:
             if method not in methods:
                 methods.append(method)
         
+        print(f"[DEBUG] Methods to try: {methods}")
+        
         # Try each method
         for method in methods:
-            print(f"Trying {method}...")
-            if self._try_camera_method(method):
-                print(f"✓ {method} initialized successfully")
-                return
-            else:
-                print(f"✗ {method} failed")
+            print(f"[DEBUG] Trying {method}...")
+            try:
+                if self._try_camera_method(method):
+                    print(f"[DEBUG] ✓ {method} initialized successfully")
+                    print(f"[DEBUG] Camera type set to: {self.camera_type}")
+                    return
+                else:
+                    print(f"[DEBUG] ✗ {method} failed")
+            except Exception as e:
+                print(f"[DEBUG] ✗ {method} failed with exception: {e}")
+                import traceback
+                traceback.print_exc()
                 
         print("\n" + "="*50)
         print("ERROR: Could not initialize any camera!")
@@ -522,11 +533,14 @@ class EnhancedCamera:
             Tuple of (success, frame)
         """
         if self.camera is None:
+            print(f"[DEBUG] Camera is None!")
             return False, None
             
         try:
             if self.camera_type == 'picamera2':
+                print(f"[DEBUG] Reading frame using picamera2 method...")
                 frame = self.camera.capture_array()
+                print(f"[DEBUG] Captured frame shape: {frame.shape}")
                 # Convert RGB to BGR for OpenCV
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                 
@@ -535,20 +549,29 @@ class EnhancedCamera:
                     self.start_time = time.time()
                 self.frame_count += 1
                 
+                print(f"[DEBUG] Frame converted successfully, frame count: {self.frame_count}")
                 return True, frame
             else:
+                print(f"[DEBUG] Reading frame using {self.camera_type} method...")
                 # Works for all other methods
                 ret, frame = self.camera.read()
+                print(f"[DEBUG] Frame read result - Success: {ret}, Frame shape: {frame.shape if frame is not None else None}")
+                
                 if ret and frame is not None:
                     # Update frame count
                     if self.start_time is None:
                         self.start_time = time.time()
                     self.frame_count += 1
+                    print(f"[DEBUG] Frame read successfully, frame count: {self.frame_count}")
+                else:
+                    print(f"[DEBUG] Failed to read frame - ret: {ret}, frame is None: {frame is None}")
                     
                 return ret, frame
                 
         except Exception as e:
-            print(f"Error reading frame: {e}")
+            print(f"[ERROR] Exception reading frame: {e}")
+            import traceback
+            traceback.print_exc()
             return False, None
             
     def get_fps(self):
