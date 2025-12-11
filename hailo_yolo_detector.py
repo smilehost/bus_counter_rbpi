@@ -114,10 +114,8 @@ class HailoYOLODetector:
                 self.network_group, format_type=FormatType.UINT8
             )
             
-            # Create inference pipeline with compatibility handling
-            print(f"[DEBUG] Creating InferVStreams with compatibility fix...")
-            
-            # Try to patch the InferVStreams object to avoid _infer_pipeline issue
+            # Create inference pipeline
+            print(f"[DEBUG] Creating InferVStreams...")
             try:
                 self.infer_pipeline = InferVStreams(
                     self.network_group,
@@ -125,23 +123,11 @@ class HailoYOLODetector:
                     self.output_vstreams_params
                 )
                 
-                # Monkey patch to fix the _infer_pipeline issue
-                if not hasattr(self.infer_pipeline, '_infer_pipeline'):
-                    print(f"[DEBUG] Patching InferVStreams object to add missing _infer_pipeline...")
-                    # Create a dummy _infer_pipeline attribute to prevent SDK internal errors
-                    import types
-                    class DummyInferPipeline:
-                        def __init__(self, real_infer_pipeline):
-                            self.real_infer_pipeline = real_infer_pipeline
-                        
-                        def infer(self, input_data):
-                            return self.real_infer_pipeline.infer(input_data)
-                    
-                    # Replace the internal _infer_pipeline with our wrapper
-                    self.infer_pipeline._infer_pipeline = DummyInferPipeline(self.infer_pipeline)
-                    print(f"[DEBUG] InferVStreams patched successfully")
-                else:
-                    print(f"[DEBUG] InferVStreams already has _infer_pipeline attribute")
+                # "Wake up" the pipeline by entering the context manager
+                # This creates the missing '_infer_pipeline' attribute
+                print(f"[DEBUG] Entering InferVStreams context manager...")
+                self.infer_pipeline.__enter__()
+                print(f"[DEBUG] InferVStreams context manager entered successfully")
                     
             except Exception as e:
                 print(f"[ERROR] Failed to create InferVStreams: {e}")
@@ -402,7 +388,9 @@ class HailoYOLODetector:
     def __del__(self):
         """Cleanup resources"""
         try:
-            if self.infer_pipeline:
+            # Exit the context manager if it was entered
+            if hasattr(self, 'infer_pipeline') and self.infer_pipeline:
+                self.infer_pipeline.__exit__(None, None, None)
                 del self.infer_pipeline
             if self.network_group:
                 del self.network_group
