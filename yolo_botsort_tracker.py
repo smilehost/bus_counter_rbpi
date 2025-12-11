@@ -20,12 +20,9 @@ except ImportError:
     print("Warning: HAILO detector not available. Using regular YOLO.")
     HAILO_AVAILABLE = False
 
-try:
-    from pi5_camera import Pi5Camera, create_pi5_camera, print_camera_info
-    PI5_CAMERA_AVAILABLE = True
-except ImportError:
-    print("Warning: Pi5 camera module not available. Using OpenCV.")
-    PI5_CAMERA_AVAILABLE = False
+# Enforce use of enhanced camera module
+from enhanced_camera import EnhancedCamera, create_enhanced_camera, test_all_methods
+ENHANCED_CAMERA_AVAILABLE = True
 
 class YOLOBoTSORTTracker:
     """Main tracking class combining YOLO detection with BoTSORT tracking"""
@@ -116,24 +113,16 @@ class YOLOBoTSORTTracker:
     def process_video(self, video_source, output_path=None):
         """Process video file or camera stream"""
         
-        # Initialize camera based on source type
+        # Initialize camera using enhanced camera module (enforced)
         if isinstance(video_source, str) and video_source.startswith('/dev/video'):
-            # Pi5 camera with device path
-            if PI5_CAMERA_AVAILABLE:
-                self.camera = create_pi5_camera(
-                    camera_type=self.config.CAMERA_TYPE,
-                    camera_index=video_source,
-                    resolution=self.config.DISPLAY_SIZE,
-                    fps=self.config.fps if hasattr(self.config, 'fps') else 30
-                )
-                print(f"Pi5 camera initialized: {video_source}")
-            else:
-                # Fallback to OpenCV
-                cap = cv2.VideoCapture(video_source)
-                if not cap.isOpened():
-                    print(f"Error: Could not open video source {video_source}")
-                    return
-                self.camera = cap
+            # Always use enhanced camera
+            self.camera = create_enhanced_camera(
+                width=self.config.CAM_WIDTH,
+                height=self.config.CAM_HEIGHT,
+                fps=self.config.CAM_FPS,
+                preferred_method=self.config.PREFERRED_CAMERA_METHOD
+            )
+            print(f"Enhanced camera initialized: {video_source}")
         else:
             # Regular OpenCV camera or video file
             cap = cv2.VideoCapture(video_source)
@@ -164,7 +153,7 @@ class YOLOBoTSORTTracker:
         
         # Process frames
         frame_count = 0
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        total_frames = int(self.camera.get(cv2.CAP_PROP_FRAME_COUNT)) if hasattr(self.camera, 'get') else 0
         
         try:
             while True:
@@ -368,22 +357,19 @@ class YOLOBoTSORTTracker:
     
     def print_camera_info(self):
         """Print available camera information"""
-        if PI5_CAMERA_AVAILABLE:
-            print_camera_info()
-        else:
-            print("Pi5 camera module not available. Using OpenCV camera detection.")
-            
-            # Basic OpenCV camera detection
-            print("Checking OpenCV cameras:")
-            for i in range(5):
-                cap = cv2.VideoCapture(i)
-                if cap.isOpened():
-                    ret, _ = cap.read()
-                    if ret:
-                        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                        print(f"  Camera {i}: {width}x{height}")
-                    cap.release()
+        # Always use enhanced camera methods
+        working_methods = test_all_methods()
+        print(f"Working camera methods: {working_methods}")
+        
+        # Test enhanced camera with best method
+        if working_methods:
+            print(f"\nTesting enhanced camera with method: {working_methods[0]}")
+            try:
+                with create_enhanced_camera(preferred_method=working_methods[0]) as cam:
+                    info = cam.get_camera_info()
+                    print(f"Camera info: {info}")
+            except Exception as e:
+                print(f"Error testing enhanced camera: {e}")
     
     def _print_final_statistics(self):
         """Print final tracking statistics"""
