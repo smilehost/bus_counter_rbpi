@@ -157,22 +157,15 @@ def example_hailo_performance_test():
             
             # Run for a short duration
             start_time = time.time()
-            frame_count = 0# Initialize camera
-            # We add 'and False' to PI5_CAMERA_AVAILABLE to force it to skip to the 'else' block
-            # since you are using a USB camera, not the Pi Camera Module.
-            # Initialize camera
-            if PI5_CAMERA_AVAILABLE: 
-                # This should now work because we fixed the environment!
-                print("Attempting to load Pi5 Camera Module...")
-                camera = create_pi5_camera(
-                    camera_index="/dev/video0",
-                    resolution=(640, 480),
-                    fps=30
-                )
-            else:
-                # Fallback only if the module fails
-                print("Pi5 Camera not found, falling back to USB/Default...")
-                camera = cv2.VideoCapture(0)
+            frame_count = 0
+            # Initialize camera using enhanced camera module
+            print("Attempting to load Enhanced Camera Module...")
+            camera = create_enhanced_camera(
+                width=640,
+                height=480,
+                fps=30,
+                preferred_method='picamera2'  # Try picamera2 first
+            )
             
             try:
                 while time.time() - start_time < 10:  # Test for 10 seconds
