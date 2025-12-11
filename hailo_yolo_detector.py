@@ -193,13 +193,63 @@ class HailoYOLODetector:
         Returns:
             Array of detections [x1, y1, x2, y2, confidence, class_id]
         """
-        # HAILO YOLO output format: [batch, num_detections, 6] where 6 = [x1, y1, x2, y2, confidence, class_id]
-        if len(output_data.shape) == 3:
-            output_data = output_data[0]  # Remove batch dimension
+        print(f"[DEBUG] postprocess_output called with output_data shape: {output_data.shape}")
+        print(f"[DEBUG] output_data type: {type(output_data)}")
         
-        # Output is already FLOAT32, no need to normalize
-        # Filter by confidence
-        valid_detections = output_data[output_data[:, 4] >= confidence_threshold]
+        # Handle the actual HAILO output format: [batch, num_classes, num_detections, 5]
+        # where 5 = [x1, y1, x2, y2, confidence] and class_id is implicit from position
+        if len(output_data.shape) == 4:
+            print(f"[DEBUG] Processing 4D output format")
+            output_data = output_data[0]  # Remove batch dimension -> [num_classes, num_detections, 5]
+            print(f"[DEBUG] After removing batch: {output_data.shape}")
+            
+            # Collect all detections across all classes
+            all_detections = []
+            for class_id in range(output_data.shape[0]):  # Iterate over classes
+                class_detections = output_data[class_id]  # [num_detections, 5]
+                print(f"[DEBUG] Class {class_id} detections shape: {class_detections.shape}")
+                
+                if len(class_detections) > 0 and class_detections.shape[1] >= 4:
+                    # Filter by confidence (assuming confidence is the 5th element if available)
+                    if class_detections.shape[1] >= 5:
+                        valid_mask = class_detections[:, 4] >= confidence_threshold
+                        valid_class_detections = class_detections[valid_mask]
+                    else:
+                        # If no confidence score, assume all are valid
+                        valid_class_detections = class_detections
+                    
+                    if len(valid_class_detections) > 0:
+                        # Add class_id to each detection
+                        class_ids = np.full((len(valid_class_detections), 1), class_id, dtype=np.float32)
+                        if valid_class_detections.shape[1] == 4:
+                            # [x1, y1, x2, y2] - add confidence and class_id
+                            confidences = np.ones((len(valid_class_detections), 1), dtype=np.float32)
+                            detections_with_class = np.hstack([valid_class_detections, confidences, class_ids])
+                        else:
+                            # [x1, y1, x2, y2, confidence] - add class_id
+                            detections_with_class = np.hstack([valid_class_detections, class_ids])
+                        
+                        all_detections.append(detections_with_class)
+            
+            if not all_detections:
+                print(f"[DEBUG] No valid detections found")
+                return np.array([])
+            
+            # Combine all detections
+            valid_detections = np.vstack(all_detections)
+            print(f"[DEBUG] Combined detections shape: {valid_detections.shape}")
+            
+        else:
+            print(f"[DEBUG] Processing unexpected output format")
+            # Fallback for unexpected formats
+            if len(output_data.shape) == 3:
+                output_data = output_data[0]  # Remove batch dimension
+            
+            # Filter by confidence
+            if output_data.shape[1] >= 5:
+                valid_detections = output_data[output_data[:, 4] >= confidence_threshold]
+            else:
+                valid_detections = output_data
         
         if len(valid_detections) == 0:
             return np.array([])
