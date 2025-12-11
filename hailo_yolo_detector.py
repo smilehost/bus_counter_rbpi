@@ -270,21 +270,71 @@ class HailoYOLODetector:
         input_dict = {self.input_vstream_info.name: input_data}
         
         # Run inference
+        print(f"[DEBUG] Starting HAILO inference...")
+        print(f"[DEBUG] Input dict keys: {list(input_dict.keys())}")
+        print(f"[DEBUG] Input shape: {input_dict[self.input_vstream_info.name].shape}")
+        print(f"[DEBUG] Output stream name: {self.output_vstream_info.name}")
+        
         try:
+            print(f"[DEBUG] Trying network group activation...")
             with self.network_group.activate():
-                infer_results = self.infer_pipeline.infer(input_dict)
+                print(f"[DEBUG] Network group activated, calling infer_pipeline.infer...")
+                # Try different inference approaches
+                try:
+                    infer_results = self.infer_pipeline.infer(input_dict)
+                except AttributeError as ae:
+                    print(f"[DEBUG] Attribute error with infer(): {ae}")
+                    # Try alternative method names
+                    if hasattr(self.infer_pipeline, 'run'):
+                        print(f"[DEBUG] Trying infer_pipeline.run()...")
+                        infer_results = self.infer_pipeline.run(input_dict)
+                    elif hasattr(self.infer_pipeline, 'predict'):
+                        print(f"[DEBUG] Trying infer_pipeline.predict()...")
+                        infer_results = self.infer_pipeline.predict(input_dict)
+                    else:
+                        print(f"[DEBUG] No alternative inference method found")
+                        raise ae
+                
+                print(f"[DEBUG] Inference completed, results keys: {list(infer_results.keys())}")
                 output_data = infer_results[self.output_vstream_info.name]
+                print(f"[DEBUG] Output data shape: {output_data.shape}")
         except AttributeError as e:
             # Fallback for different HAILO SDK versions
             print(f"[DEBUG] HAILO API error: {e}")
             print("[DEBUG] Trying alternative inference method...")
             try:
                 # Try direct inference without network group activation
-                infer_results = self.infer_pipeline.infer(input_dict)
+                print(f"[DEBUG] Trying direct inference...")
+                try:
+                    infer_results = self.infer_pipeline.infer(input_dict)
+                except AttributeError as ae:
+                    print(f"[DEBUG] Direct inference attribute error: {ae}")
+                    # Try alternative method names
+                    if hasattr(self.infer_pipeline, 'run'):
+                        print(f"[DEBUG] Trying infer_pipeline.run()...")
+                        infer_results = self.infer_pipeline.run(input_dict)
+                    elif hasattr(self.infer_pipeline, 'predict'):
+                        print(f"[DEBUG] Trying infer_pipeline.predict()...")
+                        infer_results = self.infer_pipeline.predict(input_dict)
+                    else:
+                        print(f"[DEBUG] No alternative direct inference method found")
+                        raise ae
+                
+                print(f"[DEBUG] Direct inference completed, results keys: {list(infer_results.keys())}")
                 output_data = infer_results[self.output_vstream_info.name]
+                print(f"[DEBUG] Direct output data shape: {output_data.shape}")
             except Exception as e2:
                 print(f"[ERROR] Both inference methods failed: {e2}")
+                print(f"[ERROR] Exception type: {type(e2)}")
+                import traceback
+                traceback.print_exc()
                 raise RuntimeError(f"HAILO inference failed: {e2}")
+        except Exception as e:
+            print(f"[ERROR] Unexpected error during inference: {e}")
+            print(f"[ERROR] Exception type: {type(e)}")
+            import traceback
+            traceback.print_exc()
+            raise RuntimeError(f"HAILO inference failed: {e}")
         
         # Postprocess output
         detections = self.postprocess_output(
