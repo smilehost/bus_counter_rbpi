@@ -63,7 +63,6 @@ class Config:
         
         # --- Video Processing ---
         # Focus on cam0 for Pi5, use default for development
-# --- Video Processing ---
         if self.IS_PI5:
             # Use string device path for Pi camera module
             self.VIDEO_SOURCE = "/dev/video0"
@@ -75,10 +74,35 @@ class Config:
             self.CAM_FPS = 30
         else:
             self.VIDEO_SOURCE = 0
-            self.CAMERA_TYPE = "usb"
+            self.CAMERA_TYPE = "cam_module"  # Changed from "usb" to "cam_module" for camera module
             self.CAM_WIDTH = 1280
             self.CAM_HEIGHT = 720
             self.CAM_FPS = 30
+            
+        # --- Enhanced Camera Settings (from pi5_ai_test) ---
+        # Camera access method priority - optimized for camera module
+        self.CAMERA_METHODS = [
+            'picamera2',      # Best option for Pi camera module
+            'rpicam_raw',     # Lowest latency for Pi camera module
+            'gstreamer',      # Efficient with libcamera for Pi camera
+            'rpicam_tcp',     # Most reliable for Pi5 camera module
+            'opencv_v4l2',    # Direct V4L2 access for camera module
+            'libcamera',      # Pipe method for camera module
+            'opencv'          # Regular OpenCV as fallback
+        ]
+        
+        # Preferred camera method - prioritize picamera2 for camera module
+        self.PREFERRED_CAMERA_METHOD = 'picamera2'
+        
+        # Low latency settings
+        self.LOW_LATENCY_MODE = True  # Enable low latency camera mode
+        self.SKIP_FRAMES = 0  # Skip frames to reduce latency (0 = no skip)
+        
+        # Camera buffer settings for low latency
+        self.CAMERA_BUFFER_SIZE = 1  # Minimize buffer for lower latency
+        
+        # TCP settings for rpicam_tcp method
+        self.TCP_PORT_START = 8888  # Starting port for TCP capture
             
         self.OUTPUT_VIDEO = "output_tracking.mp4"
         self.SAVE_VIDEO = True
