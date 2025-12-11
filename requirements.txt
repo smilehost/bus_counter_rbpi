@@ -22,6 +22,12 @@ psutil>=5.8.0
 # hailo-sdk>=4.17.0
 
 # Raspberry Pi 5 camera support
+# For Pi Camera Module (install via apt on Raspberry Pi OS)
+# picamera2 (system package)
+# libcamera (system package)
+
+# Enhanced camera module dependencies
+psutil>=5.8.0  # Already included, but needed for camera monitoring
 
 # Performance monitoring for Pi5
 gpustat>=1.1.1

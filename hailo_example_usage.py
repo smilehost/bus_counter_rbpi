@@ -11,13 +11,14 @@ import sys
 from yolo_botsort_tracker import YOLOBoTSORTTracker
 from config import Config
 
-# Import HAILO and Pi5 modules
+# Import HAILO and Enhanced Camera modules
 try:
     from hailo_yolo_detector import download_hailo_yolo_model, HAILO_AVAILABLE
-    from pi5_camera import create_pi5_camera, print_camera_info, PI5_CAMERA_AVAILABLE
+    from enhanced_camera import create_enhanced_camera, test_all_methods
+    ENHANCED_CAMERA_AVAILABLE = True
 except ImportError as e:
-    print(f"Error importing HAILO/Pi5 modules: {e}")
-    print("Please ensure HAILO SDK and Pi5 camera modules are properly installed")
+    print(f"Error importing HAILO/Enhanced Camera modules: {e}")
+    print("Please ensure HAILO SDK and Enhanced Camera modules are properly installed")
     sys.exit(1)
 
 
@@ -30,17 +31,17 @@ def example_hailo_cam0_tracking():
         print("Error: HAILO SDK not available")
         return
     
-    if not PI5_CAMERA_AVAILABLE:
-        print("Error: Pi5 camera module not available")
+    if not ENHANCED_CAMERA_AVAILABLE:
+        print("Error: Enhanced camera module not available")
         return
     
     # Initialize tracker with HAILO config
     tracker = YOLOBoTSORTTracker()
     
-    # Configure for HAILO and Pi5 cam0
+    # Configure for HAILO and Enhanced Camera
     tracker.config.USE_HAILO = True
-    tracker.config.VIDEO_SOURCE = "/dev/video0"  # cam0
-    tracker.config.CAMERA_TYPE = "usb"  # or "rpi" for Pi camera module
+    tracker.config.VIDEO_SOURCE = 0  # Use enhanced camera
+    tracker.config.CAMERA_TYPE = "cam_module"  # Use camera module
     tracker.config.SHOW_VIDEO = True
     tracker.config.SAVE_VIDEO = False
     
@@ -222,12 +223,27 @@ def example_hailo_camera_info():
     
     # Print HAILO availability
     print(f"HAILO SDK Available: {HAILO_AVAILABLE}")
-    print(f"Pi5 Camera Module Available: {PI5_CAMERA_AVAILABLE}")
+    print(f"Enhanced Camera Module Available: {ENHANCED_CAMERA_AVAILABLE}")
     
     # Print camera information
-    if PI5_CAMERA_AVAILABLE:
+    if ENHANCED_CAMERA_AVAILABLE:
         print("\n--- Camera Information ---")
-        print_camera_info()
+        print("Testing all camera methods...")
+        working_methods = test_all_methods()
+        
+        if working_methods:
+            print(f"Working camera methods: {working_methods}")
+            
+            # Test enhanced camera with best method
+            print(f"\nTesting enhanced camera with method: {working_methods[0]}")
+            try:
+                with create_enhanced_camera(preferred_method=working_methods[0]) as cam:
+                    info = cam.get_camera_info()
+                    print(f"Camera info: {info}")
+            except Exception as e:
+                print(f"Error testing enhanced camera: {e}")
+        else:
+            print("No working camera methods found!")
     
     # Print HAILO model information
     if HAILO_AVAILABLE:
