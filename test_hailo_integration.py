@@ -267,7 +267,6 @@ def test_inference():
         for i in range(5):
             ret, frame = camera.read()
             if not ret:
-                print(f"✗ Failed to read frame {i}")
                 continue
             
             # Process frame

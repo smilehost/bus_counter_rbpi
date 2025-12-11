@@ -159,7 +159,6 @@ def example_hailo_performance_test():
             start_time = time.time()
             frame_count = 0
             # Initialize camera using enhanced camera module
-            print("Attempting to load Enhanced Camera Module...")
             camera = create_enhanced_camera(
                 width=640,
                 height=480,

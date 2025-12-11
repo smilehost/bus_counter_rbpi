@@ -242,7 +242,6 @@ class Pi5Camera:
                 return False, None
                 
         except Exception as e:
-            print(f"Error reading frame: {e}")
             return False, None
     
     def release(self):
