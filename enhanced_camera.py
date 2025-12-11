@@ -13,14 +13,27 @@ import socket
 from typing import Optional, Tuple, List, Dict, Any
 from pathlib import Path
 
-# Try to import picamera2
+# Try to import picamera2 with multiple methods
 try:
+    # Try direct import first
     from picamera2 import Picamera2
     PICAMERA_AVAILABLE = True
     print("picamera2 is available")
 except ImportError:
-    print("Warning: picamera2 not available. Will try libcamera/OpenCV.")
-    PICAMERA_AVAILABLE = False
+    try:
+        # Try importing with system site packages
+        import sys
+        import site
+        site_packages = site.getsitepackages()
+        # Add system site packages to path
+        sys.path.extend(['/usr/lib/python3/dist-packages', '/usr/local/lib/python3/dist-packages'])
+        # Try import again
+        from picamera2 import Picamera2
+        PICAMERA_AVAILABLE = True
+        print("picamera2 is available (via system path)")
+    except ImportError:
+        print("Warning: picamera2 not available. Will try libcamera/OpenCV.")
+        PICAMERA_AVAILABLE = False
 
 
 class RpicamRawCapture:
