@@ -102,14 +102,16 @@ class HailoYOLODetector:
             self.output_vstream_info = self.hef.get_output_vstream_infos()[0]
             
             # Create input and output virtual streams params
-            input_format = FormatType.FLOAT32
+            # Use UINT8 for both input and output as required by HAILO
+            input_format = FormatType.UINT8
             if self.config and hasattr(self.config, 'HAILO_INPUT_FORMAT'):
-                if self.config.HAILO_INPUT_FORMAT.upper() == "UINT8":
-                    input_format = FormatType.UINT8
+                if self.config.HAILO_INPUT_FORMAT.upper() == "FLOAT32":
+                    input_format = FormatType.FLOAT32
             
             self.input_vstreams_params = InputVStreamParams.make(
                 self.network_group, format_type=input_format
             )
+            # Use UINT8 for output as required by HAILO
             self.output_vstreams_params = OutputVStreamParams.make(
                 self.network_group, format_type=FormatType.UINT8
             )
@@ -162,15 +164,16 @@ class HailoYOLODetector:
         # Resize to model input size
         frame_resized = cv2.resize(frame_rgb, (width, height))
         
-        # Normalize to [0, 1] range
-        frame_normalized = frame_resized.astype(np.float32) / 255.0
+        # For UINT8 format, convert to uint8 range [0, 255]
+        # No normalization to [0, 1] as we're using UINT8
+        frame_uint8 = frame_resized.astype(np.uint8)
         
         # Add batch dimension
-        frame_batch = np.expand_dims(frame_normalized, axis=0)
+        frame_batch = np.expand_dims(frame_uint8, axis=0)
         
         return frame_batch
     
-    def postprocess_output(self, output_data: np.ndarray, frame_shape: Tuple[int, int], 
+    def postprocess_output(self, output_data: np.ndarray, frame_shape: Tuple[int, int],
                          confidence_threshold: float = 0.5,
                          iou_threshold: float = 0.6) -> np.ndarray:
         """
@@ -188,6 +191,10 @@ class HailoYOLODetector:
         # HAILO YOLO output format: [batch, num_detections, 6] where 6 = [x1, y1, x2, y2, confidence, class_id]
         if len(output_data.shape) == 3:
             output_data = output_data[0]  # Remove batch dimension
+        
+        # For UINT8 output, normalize confidence values to [0, 1] range
+        if output_data.dtype == np.uint8:
+            output_data = output_data.astype(np.float32) / 255.0
         
         # Filter by confidence
         valid_detections = output_data[output_data[:, 4] >= confidence_threshold]
