@@ -117,31 +117,18 @@ class HailoYOLODetector:
             )
             
             # Create inference pipeline
-            print(f"[DEBUG] Creating InferVStreams...")
-            print(f"[DEBUG] Network group before InferVStreams: {self.network_group}")
-            print(f"[DEBUG] Input params: {self.input_vstreams_params}")
-            print(f"[DEBUG] Output params: {self.output_vstreams_params}")
             try:
                 self.infer_pipeline = InferVStreams(
                     self.network_group,
                     self.input_vstreams_params,
                     self.output_vstreams_params
                 )
-                print(f"[DEBUG] InferVStreams created: {self.infer_pipeline}")
-                print(f"[DEBUG] InferVStreams type: {type(self.infer_pipeline)}")
                 
                 # "Wake up" the pipeline by entering the context manager
                 # This creates the missing '_infer_pipeline' attribute
-                print(f"[DEBUG] Entering InferVStreams context manager...")
                 self.infer_pipeline.__enter__()
-                print(f"[DEBUG] InferVStreams context manager entered successfully")
-                print(f"[DEBUG] InferVStreams attributes after __enter__: {dir(self.infer_pipeline)}")
                     
             except Exception as e:
-                print(f"[ERROR] Failed to create InferVStreams: {e}")
-                print(f"[ERROR] Exception type: {type(e)}")
-                import traceback
-                traceback.print_exc()
                 raise
             
             print(f"HAILO model loaded successfully: {self.model_path}")
@@ -193,21 +180,15 @@ class HailoYOLODetector:
         Returns:
             Array of detections [x1, y1, x2, y2, confidence, class_id]
         """
-        print(f"[DEBUG] postprocess_output called with output_data shape: {output_data.shape}")
-        print(f"[DEBUG] output_data type: {type(output_data)}")
-        
         # Handle the actual HAILO output format: [batch, num_classes, num_detections, 5]
         # where 5 = [x1, y1, x2, y2, confidence] and class_id is implicit from position
         if len(output_data.shape) == 4:
-            print(f"[DEBUG] Processing 4D output format")
             output_data = output_data[0]  # Remove batch dimension -> [num_classes, num_detections, 5]
-            print(f"[DEBUG] After removing batch: {output_data.shape}")
             
             # Collect all detections across all classes
             all_detections = []
             for class_id in range(output_data.shape[0]):  # Iterate over classes
                 class_detections = output_data[class_id]  # [num_detections, 5]
-                print(f"[DEBUG] Class {class_id} detections shape: {class_detections.shape}")
                 
                 if len(class_detections) > 0 and class_detections.shape[1] >= 4:
                     # Filter by confidence (assuming confidence is the 5th element if available)
@@ -232,15 +213,12 @@ class HailoYOLODetector:
                         all_detections.append(detections_with_class)
             
             if not all_detections:
-                print(f"[DEBUG] No valid detections found")
                 return np.array([])
             
             # Combine all detections
             valid_detections = np.vstack(all_detections)
-            print(f"[DEBUG] Combined detections shape: {valid_detections.shape}")
             
         else:
-            print(f"[DEBUG] Processing unexpected output format")
             # Fallback for unexpected formats
             if len(output_data.shape) == 3:
                 output_data = output_data[0]  # Remove batch dimension
@@ -344,106 +322,24 @@ class HailoYOLODetector:
         input_dict = {self.input_vstream_info.name: input_data}
         
         # Run inference
-        print(f"[DEBUG] Starting HAILO inference...")
-        print(f"[DEBUG] Input dict keys: {list(input_dict.keys())}")
-        print(f"[DEBUG] Input shape: {input_dict[self.input_vstream_info.name].shape}")
-        print(f"[DEBUG] Output stream name: {self.output_vstream_info.name}")
-        print(f"[DEBUG] Network group object: {self.network_group}")
-        print(f"[DEBUG] Network group type: {type(self.network_group)}")
-        print(f"[DEBUG] Infer pipeline object: {self.infer_pipeline}")
-        print(f"[DEBUG] Infer pipeline type: {type(self.infer_pipeline)}")
-        
-        # Check if network group needs to be re-activated
-        print(f"[DEBUG] Checking network group activation state...")
         try:
-            # Try to get network group status if available
-            if hasattr(self.network_group, 'is_active'):
-                print(f"[DEBUG] Network group is_active: {self.network_group.is_active()}")
-            if hasattr(self.network_group, 'get_state'):
-                print(f"[DEBUG] Network group state: {self.network_group.get_state()}")
-        except Exception as state_e:
-            print(f"[DEBUG] Could not check network group state: {state_e}")
-        
-        try:
-            print(f"[DEBUG] Trying network group activation...")
-            activation_context = self.network_group.activate()
-            print(f"[DEBUG] Activation context created: {activation_context}")
-            with activation_context:
-                print(f"[DEBUG] Network group activated, calling infer_pipeline.infer...")
+            with self.network_group.activate():
                 # Try different inference approaches
                 try:
-                    print(f"[DEBUG] About to call infer_pipeline.infer with input_dict: {input_dict}")
                     infer_results = self.infer_pipeline.infer(input_dict)
-                    print(f"[DEBUG] infer_pipeline.infer returned: {infer_results}")
                 except AttributeError as ae:
-                    print(f"[DEBUG] Attribute error with infer(): {ae}")
                     # Try alternative method names
                     if hasattr(self.infer_pipeline, 'run'):
-                        print(f"[DEBUG] Trying infer_pipeline.run()...")
                         infer_results = self.infer_pipeline.run(input_dict)
                     elif hasattr(self.infer_pipeline, 'predict'):
-                        print(f"[DEBUG] Trying infer_pipeline.predict()...")
                         infer_results = self.infer_pipeline.predict(input_dict)
                     else:
-                        print(f"[DEBUG] No alternative inference method found")
                         raise ae
                 
-                print(f"[DEBUG] Inference completed, results keys: {list(infer_results.keys())}")
                 output_data = infer_results[self.output_vstream_info.name]
-                print(f"[DEBUG] Output data type: {type(output_data)}")
-                print(f"[DEBUG] Output data value: {output_data}")
-                if hasattr(output_data, 'shape'):
-                    print(f"[DEBUG] Output data shape: {output_data.shape}")
-                else:
-                    print(f"[DEBUG] Output data has no shape attribute, converting to numpy array...")
+                if not hasattr(output_data, 'shape'):
                     output_data = np.array(output_data)
-                    print(f"[DEBUG] Converted output data shape: {output_data.shape}")
-        except AttributeError as e:
-            # Fallback for different HAILO SDK versions
-            print(f"[DEBUG] HAILO API error: {e}")
-            print(f"[DEBUG] Exception details: {type(e).__name__}: {str(e)}")
-            print("[DEBUG] Trying alternative inference method...")
-            try:
-                # Try direct inference without network group activation
-                print(f"[DEBUG] Trying direct inference...")
-                print(f"[DEBUG] Network group state before direct inference: {self.network_group}")
-                try:
-                    print(f"[DEBUG] About to call direct infer_pipeline.infer...")
-                    infer_results = self.infer_pipeline.infer(input_dict)
-                    print(f"[DEBUG] Direct infer_pipeline.infer returned: {infer_results}")
-                except AttributeError as ae:
-                    print(f"[DEBUG] Direct inference attribute error: {ae}")
-                    # Try alternative method names
-                    if hasattr(self.infer_pipeline, 'run'):
-                        print(f"[DEBUG] Trying infer_pipeline.run()...")
-                        infer_results = self.infer_pipeline.run(input_dict)
-                    elif hasattr(self.infer_pipeline, 'predict'):
-                        print(f"[DEBUG] Trying infer_pipeline.predict()...")
-                        infer_results = self.infer_pipeline.predict(input_dict)
-                    else:
-                        print(f"[DEBUG] No alternative direct inference method found")
-                        raise ae
-                
-                print(f"[DEBUG] Direct inference completed, results keys: {list(infer_results.keys())}")
-                output_data = infer_results[self.output_vstream_info.name]
-                print(f"[DEBUG] Direct output data type: {type(output_data)}")
-                if hasattr(output_data, 'shape'):
-                    print(f"[DEBUG] Direct output data shape: {output_data.shape}")
-                else:
-                    print(f"[DEBUG] Direct output data has no shape attribute, converting to numpy array...")
-                    output_data = np.array(output_data)
-                    print(f"[DEBUG] Converted direct output data shape: {output_data.shape}")
-            except Exception as e2:
-                print(f"[ERROR] Both inference methods failed: {e2}")
-                print(f"[ERROR] Exception type: {type(e2)}")
-                import traceback
-                traceback.print_exc()
-                raise RuntimeError(f"HAILO inference failed: {e2}")
         except Exception as e:
-            print(f"[ERROR] Unexpected error during inference: {e}")
-            print(f"[ERROR] Exception type: {type(e)}")
-            import traceback
-            traceback.print_exc()
             raise RuntimeError(f"HAILO inference failed: {e}")
         
         # Postprocess output
@@ -483,25 +379,16 @@ class HailoYOLODetector:
     def __del__(self):
         """Cleanup resources"""
         try:
-            print(f"[DEBUG] Cleaning up HAILO resources...")
             # Exit the context manager if it was entered
             if hasattr(self, 'infer_pipeline') and self.infer_pipeline:
-                print(f"[DEBUG] Exiting InferVStreams context manager...")
                 self.infer_pipeline.__exit__(None, None, None)
                 del self.infer_pipeline
-                print(f"[DEBUG] InferVStreams cleaned up")
             if self.network_group:
-                print(f"[DEBUG] Cleaning up network group...")
                 del self.network_group
-                print(f"[DEBUG] Network group cleaned up")
             if self.target:
-                print(f"[DEBUG] Releasing target device...")
                 self.target.release()
-                print(f"[DEBUG] Target device released")
-        except Exception as e:
-            print(f"[DEBUG] Error during cleanup: {e}")
-            import traceback
-            traceback.print_exc()
+        except:
+            pass
 
 
 def create_hailo_detector(model_path: str, config=None) -> HailoYOLODetector:

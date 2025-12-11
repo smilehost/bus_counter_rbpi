@@ -97,8 +97,6 @@ class YOLOBoTSORTTracker:
             print("Switching to default YOLO model for fallback...")
             self.config.YOLO_MODEL = "yolo11n.pt"  # Default YOLO model
         
-        print(f"[DEBUG] Initializing YOLO detector with model: {self.config.YOLO_MODEL}")
-        print(f"[DEBUG] Model path type: {type(self.config.YOLO_MODEL)}")
         
         try:
             detector = YOLO(self.config.YOLO_MODEL)
@@ -139,13 +137,9 @@ class YOLOBoTSORTTracker:
     def process_video(self, video_source, output_path=None):
         """Process video file or camera stream"""
         
-        print(f"[DEBUG] Initializing camera with source: {video_source}")
-        print(f"[DEBUG] Video source type: {type(video_source)}")
-        
         # Initialize camera using enhanced camera module (enforced)
         if isinstance(video_source, (str, int)) and (str(video_source).startswith('/dev/video') or isinstance(video_source, int)):
             # Always use enhanced camera
-            print(f"[DEBUG] Creating enhanced camera...")
             try:
                 self.camera = create_enhanced_camera(
                     width=self.config.CAM_WIDTH,
@@ -153,10 +147,6 @@ class YOLOBoTSORTTracker:
                     fps=self.config.CAM_FPS,
                     preferred_method=self.config.PREFERRED_CAMERA_METHOD
                 )
-                print(f"[DEBUG] Enhanced camera created successfully")
-                if hasattr(self.camera, 'get_camera_info'):
-                    camera_info = self.camera.get_camera_info()
-                    print(f"[DEBUG] Camera info: {camera_info}")
             except Exception as e:
                 print(f"[ERROR] Failed to create enhanced camera: {e}")
                 import traceback
@@ -164,33 +154,24 @@ class YOLOBoTSORTTracker:
                 return
         else:
             # Regular OpenCV camera or video file
-            print(f"[DEBUG] Creating OpenCV camera...")
             cap = cv2.VideoCapture(video_source)
             if not cap.isOpened():
                 print(f"[ERROR] Could not open video source {video_source}")
                 return
             self.camera = cap
-            print(f"[DEBUG] OpenCV camera created successfully")
         
         # Get video properties
-        print(f"[DEBUG] Getting video properties...")
         try:
             if hasattr(self.camera, 'get_camera_info'):
                 # Pi5 camera
-                print(f"[DEBUG] Using Pi5 camera method...")
                 camera_info = self.camera.get_camera_info()
                 fps = camera_info.get('target_fps', 30)
                 width, height = camera_info.get('resolution', self.config.DISPLAY_SIZE)
-                print(f"[DEBUG] Pi5 camera info: {camera_info}")
             else:
                 # OpenCV camera
-                print(f"[DEBUG] Using OpenCV camera method...")
                 fps = int(self.camera.get(cv2.CAP_PROP_FPS))
                 width = int(self.camera.get(cv2.CAP_PROP_FRAME_WIDTH))
                 height = int(self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                print(f"[DEBUG] OpenCV camera properties - FPS: {fps}, Width: {width}, Height: {height}")
-            
-            print(f"[DEBUG] Final video properties: {width}x{height} @ {fps} FPS")
         except Exception as e:
             print(f"[ERROR] Failed to get video properties: {e}")
             import traceback
@@ -213,15 +194,9 @@ class YOLOBoTSORTTracker:
         else:
             total_frames = 0  # Unknown for camera streams
         
-        print(f"[DEBUG] Starting frame processing loop...")
-        print(f"[DEBUG] Total frames: {total_frames}")
-        print(f"[DEBUG] Camera has 'read' method: {hasattr(self.camera, 'read')}")
-        print(f"[DEBUG] Camera type: {type(self.camera)}")
-        
         try:
             print("Starting frame processing loop...")
             while True:
-                print(f"[DEBUG] Reading frame {frame_count}...")
                 # Read frame from camera
                 if hasattr(self.camera, 'read'):
                     # Pi5 camera or OpenCV camera
@@ -300,11 +275,6 @@ class YOLOBoTSORTTracker:
         # Initialize variables
         tracks = []
         
-        # DEBUG: Log frame processing info
-        should_debug = frame_count % 10 == 0
-        if should_debug:
-            print(f"\n--- PROCESSING FRAME {frame_count} ---")
-        
         # Always predict track positions for smooth tracking
         self.tracker._predict_tracks()
         
@@ -313,13 +283,8 @@ class YOLOBoTSORTTracker:
         detection_start = time.time()
         
         # Detection (HAILO or YOLO)
-        print(f"[DEBUG] Detector type: {type(self.detector)}")
-        print(f"[DEBUG] USE_HAILO: {self.config.USE_HAILO}")
-        print(f"[DEBUG] Detector has 'detect' method: {hasattr(self.detector, 'detect')}")
-        
         if self.config.USE_HAILO:
             # HAILO inference
-            print(f"[DEBUG] Using HAILO inference...")
             detections, inference_time = self.detector.detect(
                 frame,
                 confidence_threshold=self.config.YOLO_CONFIDENCE,
@@ -329,7 +294,6 @@ class YOLOBoTSORTTracker:
             detection_time = inference_time
         else:
             # Regular YOLO inference
-            print(f"[DEBUG] Using YOLO inference...")
             try:
                 # Use the correct YOLO API - results() method instead of direct call
                 results = self.detector.predict(frame, conf=self.config.YOLO_CONFIDENCE,
@@ -341,37 +305,18 @@ class YOLOBoTSORTTracker:
                 # Extract detections
                 detections = self._extract_detections(results[0])
             except Exception as e:
-                print(f"[ERROR] YOLO inference failed: {e}")
-                print(f"[ERROR] Detector type: {type(self.detector)}")
-                print(f"[ERROR] Detector: {self.detector}")
                 raise e
         
         self.performance_monitor.add_detection_time(detection_time)
-        
-        # DEBUG: Log detection info
-        if should_debug:
-            print(f"Detections found: {len(detections)}")
-            if len(detections) == 0:
-                print("NO DETECTIONS - Checking for potential ghost tracks...")
         
         # Start tracking timer
         tracking_start = time.time()
         
         # BoTSORT tracking
-        tracks_before = len(self.tracker.tracks)
         tracks = self.tracker.update(detections, frame)
-        tracks_after = len(tracks)
         
         tracking_time = time.time() - tracking_start
         self.performance_monitor.add_tracking_time(tracking_time)
-        
-        # DEBUG: Log track changes
-        if should_debug:
-            print(f"Tracks before: {tracks_before}, Tracks after: {tracks_after}")
-            if len(detections) == 0 and tracks_after > 0:
-                print(f"WARNING: {tracks_after} tracks active with NO detections (GHOSTING!)")
-                for track in tracks:
-                    print(f"  Ghost track {track.track_id}: time_since_update={track.time_since_update}, bbox={track.to_tlbr()}")
         
         # Update bus counter
         height = frame.shape[0]
