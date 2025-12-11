@@ -270,9 +270,21 @@ class HailoYOLODetector:
         input_dict = {self.input_vstream_info.name: input_data}
         
         # Run inference
-        with self.network_group.activate():
-            infer_results = self.infer_pipeline.infer(input_dict)
-            output_data = infer_results[self.output_vstream_info.name]
+        try:
+            with self.network_group.activate():
+                infer_results = self.infer_pipeline.infer(input_dict)
+                output_data = infer_results[self.output_vstream_info.name]
+        except AttributeError as e:
+            # Fallback for different HAILO SDK versions
+            print(f"[DEBUG] HAILO API error: {e}")
+            print("[DEBUG] Trying alternative inference method...")
+            try:
+                # Try direct inference without network group activation
+                infer_results = self.infer_pipeline.infer(input_dict)
+                output_data = infer_results[self.output_vstream_info.name]
+            except Exception as e2:
+                print(f"[ERROR] Both inference methods failed: {e2}")
+                raise RuntimeError(f"HAILO inference failed: {e2}")
         
         # Postprocess output
         detections = self.postprocess_output(
