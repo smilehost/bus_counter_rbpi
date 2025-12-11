@@ -90,9 +90,33 @@ class YOLOBoTSORTTracker:
         
         # Fallback to regular YOLO
         self.config.USE_HAILO = False
-        detector = YOLO(self.config.YOLO_MODEL)
-        print(f"YOLO detector initialized: {self.config.YOLO_MODEL}")
-        return detector
+        
+        # Check if we need to switch model type from HAILO to YOLO
+        if isinstance(self.config.YOLO_MODEL, str) and self.config.YOLO_MODEL.endswith('.hef'):
+            print(f"Warning: Current model {self.config.YOLO_MODEL} is a HAILO model, but HAILO is not available.")
+            print("Switching to default YOLO model for fallback...")
+            self.config.YOLO_MODEL = "yolo11n.pt"  # Default YOLO model
+        
+        print(f"[DEBUG] Initializing YOLO detector with model: {self.config.YOLO_MODEL}")
+        print(f"[DEBUG] Model path type: {type(self.config.YOLO_MODEL)}")
+        
+        try:
+            detector = YOLO(self.config.YOLO_MODEL)
+            print(f"YOLO detector initialized: {self.config.YOLO_MODEL}")
+            return detector
+        except Exception as e:
+            print(f"Failed to initialize YOLO detector with model {self.config.YOLO_MODEL}: {e}")
+            # Try with a default model as last resort
+            try:
+                default_model = "yolo11n.pt"
+                print(f"Trying with default model: {default_model}")
+                detector = YOLO(default_model)
+                self.config.YOLO_MODEL = default_model
+                print(f"YOLO detector initialized with default model: {default_model}")
+                return detector
+            except Exception as e2:
+                print(f"Failed to initialize YOLO detector with default model: {e2}")
+                raise RuntimeError(f"Could not initialize any detector: HAILO failed, YOLO with {self.config.YOLO_MODEL} failed, YOLO with default failed")
     
     def _setup_device(self):
         """Setup computation device"""
@@ -289,8 +313,13 @@ class YOLOBoTSORTTracker:
         detection_start = time.time()
         
         # Detection (HAILO or YOLO)
+        print(f"[DEBUG] Detector type: {type(self.detector)}")
+        print(f"[DEBUG] USE_HAILO: {self.config.USE_HAILO}")
+        print(f"[DEBUG] Detector has 'detect' method: {hasattr(self.detector, 'detect')}")
+        
         if self.config.USE_HAILO:
             # HAILO inference
+            print(f"[DEBUG] Using HAILO inference...")
             detections, inference_time = self.detector.detect(
                 frame,
                 confidence_threshold=self.config.YOLO_CONFIDENCE,
@@ -300,14 +329,21 @@ class YOLOBoTSORTTracker:
             detection_time = inference_time
         else:
             # Regular YOLO inference
-            results = self.detector(frame, conf=self.config.YOLO_CONFIDENCE,
-                                   iou=self.config.YOLO_IOU_THRESHOLD,
-                                   classes=self.config.YOLO_CLASSES,
-                                   verbose=False)
-            
-            detection_time = time.time() - detection_start
-            # Extract detections
-            detections = self._extract_detections(results[0])
+            print(f"[DEBUG] Using YOLO inference...")
+            try:
+                results = self.detector(frame, conf=self.config.YOLO_CONFIDENCE,
+                                       iou=self.config.YOLO_IOU_THRESHOLD,
+                                       classes=self.config.YOLO_CLASSES,
+                                       verbose=False)
+                
+                detection_time = time.time() - detection_start
+                # Extract detections
+                detections = self._extract_detections(results[0])
+            except Exception as e:
+                print(f"[ERROR] YOLO inference failed: {e}")
+                print(f"[ERROR] Detector type: {type(self.detector)}")
+                print(f"[ERROR] Detector: {self.detector}")
+                raise e
         
         self.performance_monitor.add_detection_time(detection_time)
         
