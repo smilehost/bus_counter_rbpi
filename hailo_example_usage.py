@@ -8,6 +8,7 @@ import cv2
 import time
 import os
 import sys
+import numpy as np
 from yolo_botsort_tracker import YOLOBoTSORTTracker
 from config import Config
 
@@ -46,7 +47,7 @@ def example_hailo_cam0_tracking():
     tracker.config.SAVE_VIDEO = False
     
     # HAILO-optimized settings
-    tracker.config.YOLO_CONFIDENCE = 0.6
+    tracker.config.YOLO_CONFIDENCE = 0.3  # Lowered from 0.6 to improve detection
     tracker.config.PROCESS_EVERY_N_FRAMES = 1  # Process every frame for max accuracy
     tracker.config.MAX_DETECTIONS = 50
     tracker.config.ENABLE_REID = False  # Disable for performance

@@ -180,10 +180,24 @@ class HailoYOLODetector:
         Returns:
             Array of detections [x1, y1, x2, y2, confidence, class_id]
         """
+        print(f"[DEBUG] Raw output shape: {output_data.shape}")
+        print(f"[DEBUG] Raw output dtype: {output_data.dtype}")
+        
+        # Check for empty output
+        if output_data.size == 0:
+            print("[DEBUG] Empty output array - no detections")
+            return np.array([])
+        
         # Handle the actual HAILO output format: [batch, num_classes, num_detections, 5]
         # where 5 = [x1, y1, x2, y2, confidence] and class_id is implicit from position
         if len(output_data.shape) == 4:
             output_data = output_data[0]  # Remove batch dimension -> [num_classes, num_detections, 5]
+            print(f"[DEBUG] After removing batch: {output_data.shape}")
+            
+            # Check if we have any detections
+            if output_data.shape[2] == 0:  # num_detections is 0
+                print("[DEBUG] No detections found (num_detections = 0)")
+                return np.array([])
             
             # Collect all detections across all classes
             all_detections = []
@@ -213,13 +227,16 @@ class HailoYOLODetector:
                         all_detections.append(detections_with_class)
             
             if not all_detections:
+                print("[DEBUG] No valid detections after filtering")
                 return np.array([])
             
             # Combine all detections
             valid_detections = np.vstack(all_detections)
+            print(f"[DEBUG] Combined detections: {valid_detections.shape}")
             
         else:
             # Fallback for unexpected formats
+            print(f"[DEBUG] Unexpected output format, shape: {output_data.shape}")
             if len(output_data.shape) == 3:
                 output_data = output_data[0]  # Remove batch dimension
             
@@ -230,6 +247,7 @@ class HailoYOLODetector:
                 valid_detections = output_data
         
         if len(valid_detections) == 0:
+            print("[DEBUG] No detections after confidence filtering")
             return np.array([])
         
         # Scale bounding boxes to original frame size
@@ -248,6 +266,7 @@ class HailoYOLODetector:
         if len(valid_detections) > 1:
             valid_detections = self._apply_nms(valid_detections, iou_threshold)
         
+        print(f"[DEBUG] Final detections after NMS: {valid_detections.shape}")
         return valid_detections
     
     def _apply_nms(self, detections: np.ndarray, iou_threshold: float) -> np.ndarray:

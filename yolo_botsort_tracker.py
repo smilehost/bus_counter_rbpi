@@ -290,13 +290,32 @@ class YOLOBoTSORTTracker:
         # Detection (HAILO or YOLO)
         if self.config.USE_HAILO:
             # HAILO inference
-            detections, inference_time = self.detector.detect(
-                frame,
-                confidence_threshold=self.config.YOLO_CONFIDENCE,
-                iou_threshold=self.config.YOLO_IOU_THRESHOLD,
-                classes=self.config.YOLO_CLASSES
-            )
-            detection_time = inference_time
+            try:
+                detections, inference_time = self.detector.detect(
+                    frame,
+                    confidence_threshold=self.config.YOLO_CONFIDENCE,
+                    iou_threshold=self.config.YOLO_IOU_THRESHOLD,
+                    classes=self.config.YOLO_CLASSES
+                )
+                detection_time = inference_time
+            except Exception as e:
+                print(f"[ERROR] HAILO detection failed: {e}")
+                print("[INFO] Falling back to regular YOLO detection...")
+                
+                # Fallback to regular YOLO
+                self.config.USE_HAILO = False
+                self.detector = YOLO("yolo11n.pt")  # Use default YOLO model
+                print(f"[INFO] Switched to YOLO model: yolo11n.pt")
+                
+                # Retry with regular YOLO
+                results = self.detector.predict(frame, conf=self.config.YOLO_CONFIDENCE,
+                                         iou=self.config.YOLO_IOU_THRESHOLD,
+                                         classes=self.config.YOLO_CLASSES,
+                                         verbose=False)
+                
+                detection_time = time.time() - detection_start
+                # Extract detections
+                detections = self._extract_detections(results[0])
         else:
             # Regular YOLO inference
             try:
