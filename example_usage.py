@@ -6,6 +6,8 @@ This script demonstrates different ways to use the tracking system
 
 import cv2
 import time
+import os
+import glob
 from yolo_botsort_tracker import YOLOBoTSORTTracker
 from config import Config
 
@@ -101,7 +103,6 @@ def example_video_file_tracking(video_path="test_video.mp4"):
     tracker.config.OUTPUT_VIDEO = "output_" + video_path
     tracker.config.SHOW_VIDEO = True
     tracker.config.SAVE_VIDEO = True
-    tracker.config.YOLO_CONFIDENCE = 0.5
     
     print(f"Processing video: {video_path}")
     print(f"Output will be saved to: {tracker.config.OUTPUT_VIDEO}")
@@ -281,6 +282,49 @@ def example_debug_ghost_tracking(video_path="test_video.mp4"):
     tracker.process_video(tracker.config.VIDEO_SOURCE, tracker.config.OUTPUT_VIDEO)
 
 
+def find_mp4_files():
+    """Find all MP4 files that don't contain 'output' in their filename"""
+    mp4_files = []
+    
+    # Search for all MP4 files in current directory
+    for file_path in glob.glob("*.mp4"):
+        # Skip files that contain 'output' in their name
+        if "output" not in os.path.basename(file_path):
+            mp4_files.append(file_path)
+    
+    return mp4_files
+
+
+def select_video_file():
+    """Display list of available MP4 files and let user select one"""
+    mp4_files = find_mp4_files()
+    
+    if not mp4_files:
+        print("No MP4 files found without 'output' in the filename.")
+        return None
+    
+    print("\nAvailable video files:")
+    print("-" * 40)
+    for i, file_path in enumerate(mp4_files, 1):
+        print(f"{i}. {file_path}")
+    print("-" * 40)
+    
+    while True:
+        try:
+            choice = input(f"Select video file (1-{len(mp4_files)}) or press Enter for default: ").strip()
+            if not choice:
+                # Default to first file if available
+                return mp4_files[0] if mp4_files else None
+            
+            choice_idx = int(choice) - 1
+            if 0 <= choice_idx < len(mp4_files):
+                return mp4_files[choice_idx]
+            else:
+                print(f"Invalid choice. Please enter a number between 1 and {len(mp4_files)}.")
+        except ValueError:
+            print("Invalid input. Please enter a number.")
+
+
 def main():
     """Main function with menu"""
     print("YOLO-BoTSORT Tracker Examples")
@@ -300,10 +344,11 @@ def main():
         if choice == "1":
             example_webcam_tracking_with_fallback()
         elif choice == "2":
-            video_path = input("Enter video file path (or press Enter for default): ").strip()
-            if not video_path:
-                video_path = "test_video.mp4"
-            example_video_file_tracking(video_path)
+            video_path = select_video_file()
+            if video_path:
+                example_video_file_tracking(video_path)
+            else:
+                print("No valid video file selected.")
         elif choice == "3":
             example_custom_settings()
         elif choice == "4":
@@ -311,10 +356,11 @@ def main():
         elif choice == "5":
             example_raspberry_pi_settings()
         elif choice == "6":
-            video_path = input("Enter video file path for debug test (or press Enter for default): ").strip()
-            if not video_path:
-                video_path = "test_video.mp4"
-            example_debug_ghost_tracking(video_path)
+            video_path = select_video_file()
+            if video_path:
+                example_debug_ghost_tracking(video_path)
+            else:
+                print("No valid video file selected for debug test.")
         elif choice == "7":
             print("Running multiple examples...")
             # Note: This would require actual video files

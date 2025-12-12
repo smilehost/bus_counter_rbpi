@@ -19,33 +19,33 @@ class Config:
         # LOWERED: High confidence kills tracking in crowds.
         # 0.4 - 0.5 is usually the sweet spot for tracking.
         self.YOLO_CONFIDENCE = 0.5
-        self.YOLO_IOU_THRESHOLD = 0.6
+        self.YOLO_IOU_THRESHOLD = 0.45
         self.YOLO_CLASSES = [0]  # Focus ONLY on Person (0) if you are doing passenger counting to save resources
         
         # --- BoTSORT Configuration ---
         self.BOTSORT_TRACKER = {
             # Must be slightly higher or equal to YOLO_CONFIDENCE
-            'track_high_thresh': 0.6, 
+            'track_high_thresh': 0.65, 
             
-            'track_low_thresh': 0.1,
+            'track_low_thresh': 0.45,
             
             # LOWERED: Easier to start tracking a new person entering the frame
-            'new_track_thresh': 0.5, 
+            'new_track_thresh': 0.65, 
             
             'track_buffer': 40,  # INCREASED: Keep "lost" tracks in memory for 2 seconds (at 30fps) to recover from occlusions
             
             # CRITICAL FIX: 0.9 is too strict. 0.7 allows for movement between frames.
             # If this is too high, you get "Ghosting" (tracker creates new ID for same person).
-            'match_thresh': 0.6, 
+            'match_thresh': 0.5, 
             
             # Adjusted for standard BoTSORT behavior
-            'proximity_thresh': 0.5, 
+            'proximity_thresh': 0.6, 
             
-            'appearance_thresh': 0.25, 
-            'with_reid': True,
+            'appearance_thresh': 0.20, 
+            'with_reid': False,
             
             # sparseOptFlow is slow. If camera is fixed, use None. If moving (on bus), 'gmc' is often faster/better.
-            'cmc_method': 'sparseOptFlow', 
+            'cmc_method': 'gmc', 
             'frame_rate': 30,
             'fuse_score': True
         }

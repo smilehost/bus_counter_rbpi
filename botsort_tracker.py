@@ -111,7 +111,7 @@ class BoTSORT:
                         track_box = track.to_tlbr()
                         iou = self._calculate_iou(det_box, track_box)
                         max_iou = max(max_iou, iou)
-                        if iou > 0.2:  # Even lower overlap threshold to prevent duplicate tracks
+                        if iou > 0.4:  # Even lower overlap threshold to prevent duplicate tracks
                             should_create = False
                             if should_debug:
                                 print(f"  Detection {det_idx} overlaps with track {track.track_id} (IoU: {iou:.2f}), NOT creating new track")
@@ -130,6 +130,7 @@ class BoTSORT:
         
         # Manage lost tracks
         self._manage_lost_tracks(should_debug)
+        self._detect_and_merge_duplicate_tracks(should_debug)
         
         # Log final state
         active_tracks = self._get_active_tracks()
@@ -350,6 +351,69 @@ class BoTSORT:
                 else:
                     print(f"    FILTERING OUT: Track {track.track_id} (time_since_update: {track.time_since_update})")
         return active_tracks
+    
+    def _detect_and_merge_duplicate_tracks(self, should_debug=True):
+        """Detect and merge duplicate tracks that are tracking same person"""
+        if len(self.tracks) < 2:
+            return
+        
+        # Find pairs of tracks that might be duplicates
+        duplicates = []
+        for i in range(len(self.tracks)):
+            for j in range(i+1, len(self.tracks)):
+                track1 = self.tracks[i]
+                track2 = self.tracks[j]
+                
+                # Only consider confirmed tracks
+                if (track1.state == Track.Confirmed and track2.state == Track.Confirmed):
+                    # Calculate IoU between tracks
+                    box1 = track1.to_tlbr()
+                    box2 = track2.to_tlbr()
+                    iou = self._calculate_iou(box1, box2)
+                    
+                    # If tracks have high overlap, they might be duplicates
+                    if iou > 0.7:  # High overlap threshold
+                        # Check if tracks have similar appearance features
+                        if self.with_reid and track1.features and track2.features:
+                            feat1 = track1.get_feature()
+                            feat2 = track2.get_feature()
+                            similarity = np.dot(feat1, feat2) / (
+                                np.linalg.norm(feat1) * np.linalg.norm(feat2) + 1e-8
+                            )
+                            
+                            # If appearance is also similar, they're likely duplicates
+                            if similarity > 0.8:
+                                duplicates.append((i, j, iou, similarity))
+                        else:
+                            # Without ReID, rely solely on overlap
+                            duplicates.append((i, j, iou, 0))
+        
+        # Merge duplicates (keep track with more hits)
+        for i, j, iou, similarity in duplicates:
+            if i < len(self.tracks) and j < len(self.tracks):
+                track1 = self.tracks[i]
+                track2 = self.tracks[j]
+                
+                # Keep the track with more hits (more stable)
+                if track1.hits >= track2.hits:
+                    keep_track = track1
+                    remove_track = track2
+                    keep_idx = i
+                    remove_idx = j
+                else:
+                    keep_track = track2
+                    remove_track = track1
+                    keep_idx = j
+                    remove_idx = i
+                
+                if should_debug:
+                    print(f"    MERGING: Track {remove_track.track_id} into {keep_track.track_id} (IoU: {iou:.2f}, Similarity: {similarity:.2f})")
+                
+                # Mark duplicate track for deletion
+                remove_track.state = Track.Deleted
+        
+        # Remove deleted tracks
+        self.tracks = [t for t in self.tracks if t.state != Track.Deleted]
 
 
 class Track:
@@ -440,7 +504,7 @@ class Track:
             print(f"      RECOVERY: Track {self.track_id} recovered after {old_time_since_update} frames of ghosting")
         
         # Update state - confirm after first successful update to prevent ID changes
-        if self.state == Track.Tentative and self.hits >= 1:  # Changed from 2 to 1
+        if self.state == Track.Tentative and self.hits >= 2:  # Changed from 2 to 1
             self.state = Track.Confirmed
             if should_debug:
                 print(f"      Track {self.track_id} confirmed (hits: {self.hits})")
