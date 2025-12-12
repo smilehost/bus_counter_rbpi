@@ -271,6 +271,15 @@ class YOLOBoTSORTTracker:
         # Initialize variables
         tracks = []
         
+        # DEBUG: Add frame processing logging
+        if frame_count % 30 == 0:  # Log every 30 frames
+            print(f"\n[DEBUG] Processing frame #{frame_count}")
+            print(f"[DEBUG] Frame shape: {frame.shape}, dtype: {frame.dtype}")
+            print(f"[DEBUG] Frame min/max: {frame.min()}/{frame.max()}")
+            print(f"[DEBUG] USE_HAILO: {self.config.USE_HAILO}")
+            print(f"[DEBUG] YOLO_CONFIDENCE: {self.config.YOLO_CONFIDENCE}")
+            print(f"[DEBUG] YOLO_CLASSES: {self.config.YOLO_CLASSES}")
+        
         # Always predict track positions for smooth tracking
         self.tracker._predict_tracks()
         
@@ -305,6 +314,31 @@ class YOLOBoTSORTTracker:
         
         self.performance_monitor.add_detection_time(detection_time)
         
+        # DEBUG: Log detection results
+        if frame_count % 30 == 0:  # Log every 30 frames
+            print(f"[DEBUG] Detection time: {detection_time*1000:.2f}ms")
+            print(f"[DEBUG] Detections found: {len(detections)}")
+            if len(detections) > 0:
+                print(f"[DEBUG] Detection sample: {detections[0]}")
+                # Check if detections are valid
+                for i, det in enumerate(detections[:3]):  # Check first 3 detections
+                    x1, y1, x2, y2, conf, cls = det
+                    print(f"[DEBUG] Detection {i}: bbox=({x1:.1f},{y1:.1f},{x2:.1f},{y2:.1f}), conf={conf:.3f}, class={int(cls)}")
+                    
+                    # Check for invalid coordinates
+                    if x2 <= x1 or y2 <= y1:
+                        print(f"[WARNING] Invalid bbox in detection {i}: x2<=x1 or y2<=y1")
+                    if conf <= 0:
+                        print(f"[WARNING] Invalid confidence in detection {i}: {conf}")
+                    if not (0 <= x1 < frame.shape[1] and 0 <= x2 < frame.shape[1] and
+                           0 <= y1 < frame.shape[0] and 0 <= y2 < frame.shape[0]):
+                        print(f"[WARNING] Bbox out of frame bounds in detection {i}")
+            else:
+                print("[DEBUG] No detections - checking possible causes:")
+                print(f"[DEBUG] - Frame too dark/bright? min={frame.min()}, max={frame.max()}")
+                print(f"[DEBUG] - Color space issue? BGR format expected")
+                print(f"[DEBUG] - Confidence too high? threshold={self.config.YOLO_CONFIDENCE}")
+        
         # Start tracking timer
         tracking_start = time.time()
         
@@ -313,6 +347,16 @@ class YOLOBoTSORTTracker:
         
         tracking_time = time.time() - tracking_start
         self.performance_monitor.add_tracking_time(tracking_time)
+        
+        # DEBUG: Log tracking results
+        if frame_count % 30 == 0:  # Log every 30 frames
+            print(f"[DEBUG] Tracking time: {tracking_time*1000:.2f}ms")
+            print(f"[DEBUG] Active tracks: {len(tracks)}")
+            for i, track in enumerate(tracks[:3]):  # Check first 3 tracks
+                print(f"[DEBUG] Track {i}: ID={track.track_id}, state={track.state}, age={track.age}, hits={track.hits}")
+                if hasattr(track, 'bbox') and track.bbox is not None:
+                    x1, y1, x2, y2 = track.bbox
+                    print(f"[DEBUG]   bbox=({x1:.1f},{y1:.1f},{x2:.1f},{y2:.1f})")
         
         # Update bus counter
         height = frame.shape[0]

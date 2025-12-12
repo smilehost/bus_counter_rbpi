@@ -530,8 +530,16 @@ class EnhancedCamera:
         try:
             if self.camera_type == 'picamera2':
                 frame = self.camera.capture_array()
+                # DEBUG: Log frame properties before conversion
+                if self.frame_count % 30 == 0:  # Log every 30 frames
+                    print(f"[DEBUG] Picamera2 raw frame: shape={frame.shape}, dtype={frame.dtype}, min={frame.min()}, max={frame.max()}")
+                
                 # Convert RGB to BGR for OpenCV
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                
+                # DEBUG: Log frame properties after conversion
+                if self.frame_count % 30 == 0:  # Log every 30 frames
+                    print(f"[DEBUG] Picamera2 BGR frame: shape={frame.shape}, dtype={frame.dtype}, min={frame.min()}, max={frame.max()}")
                 
                 # Update frame count
                 if self.start_time is None:
@@ -544,6 +552,21 @@ class EnhancedCamera:
                 ret, frame = self.camera.read()
                 
                 if ret and frame is not None:
+                    # DEBUG: Log frame properties for other camera methods
+                    if self.frame_count % 30 == 0:  # Log every 30 frames
+                        print(f"[DEBUG] {self.camera_type} frame: shape={frame.shape}, dtype={frame.dtype}, min={frame.min()}, max={frame.max()}")
+                        
+                        # Check if this might be a color space issue
+                        if len(frame.shape) == 3 and frame.shape[2] == 3:
+                            # Sample a few pixels to check color channel distribution
+                            sample_pixel = frame[100, 100]  # Sample pixel at (100, 100)
+                            print(f"[DEBUG] Sample pixel BGR values: {sample_pixel}")
+                            
+                            # Check if blue channel dominates (potential RGB/BGR swap)
+                            b, g, r = sample_pixel
+                            if b > r * 1.5 and b > g * 1.5:
+                                print(f"[WARNING] Blue channel dominates - possible RGB/BGR color space issue!")
+                    
                     # Update frame count
                     if self.start_time is None:
                         self.start_time = time.time()

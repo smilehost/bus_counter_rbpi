@@ -295,7 +295,7 @@ class HailoYOLODetector:
         
         return intersection / union if union > 0 else 0.0
     
-    def detect(self, frame: np.ndarray, 
+    def detect(self, frame: np.ndarray,
               confidence_threshold: float = 0.5,
               iou_threshold: float = 0.6,
               classes: Optional[List[int]] = None) -> Tuple[np.ndarray, float]:
@@ -313,10 +313,25 @@ class HailoYOLODetector:
             detections: Array of [x1, y1, x2, y2, confidence, class_id]
             inference_time: Inference time in seconds
         """
+        # DEBUG: Add detection logging
+        static_counter = getattr(self, '_debug_counter', 0)
+        self._debug_counter = static_counter + 1
+        
+        if static_counter % 30 == 0:  # Log every 30 detections
+            print(f"[DEBUG] HAILO Detection #{static_counter}")
+            print(f"[DEBUG] Input frame: shape={frame.shape}, dtype={frame.dtype}, min={frame.min()}, max={frame.max()}")
+            print(f"[DEBUG] Confidence threshold: {confidence_threshold}")
+            print(f"[DEBUG] IoU threshold: {iou_threshold}")
+            if classes:
+                print(f"[DEBUG] Filter classes: {classes}")
+        
         start_time = time.time()
         
         # Preprocess frame
         input_data = self.preprocess_frame(frame)
+        
+        if static_counter % 30 == 0:  # Log every 30 detections
+            print(f"[DEBUG] Preprocessed input: shape={input_data.shape}, dtype={input_data.dtype}, min={input_data.min()}, max={input_data.max()}")
         
         # Prepare input dictionary
         input_dict = {self.input_vstream_info.name: input_data}
@@ -339,6 +354,12 @@ class HailoYOLODetector:
                 output_data = infer_results[self.output_vstream_info.name]
                 if not hasattr(output_data, 'shape'):
                     output_data = np.array(output_data)
+                    
+                if static_counter % 30 == 0:  # Log every 30 detections
+                    print(f"[DEBUG] Raw output shape: {output_data.shape}")
+                    if hasattr(output_data, 'min') and hasattr(output_data, 'max'):
+                        print(f"[DEBUG] Raw output range: {output_data.min()} to {output_data.max()}")
+                    
         except Exception as e:
             raise RuntimeError(f"HAILO inference failed: {e}")
         
@@ -360,6 +381,24 @@ class HailoYOLODetector:
         # Keep only last 100 inference times for performance tracking
         if len(self.inference_times) > 100:
             self.inference_times = self.inference_times[-100:]
+        
+        # DEBUG: Log detection results
+        if static_counter % 30 == 0:  # Log every 30 detections
+            print(f"[DEBUG] Final detections: {len(detections)} objects found")
+            if len(detections) > 0:
+                print(f"[DEBUG] Detection sample: {detections[0] if len(detections) > 0 else 'None'}")
+                # Log class distribution
+                if len(detections) > 0:
+                    class_ids = detections[:, 5].astype(int)
+                    unique_classes, counts = np.unique(class_ids, return_counts=True)
+                    for class_id, count in zip(unique_classes, counts):
+                        class_name = get_class_name(class_id)
+                        print(f"[DEBUG] Class {class_id} ({class_name}): {count} detections")
+            else:
+                print("[DEBUG] No detections found - possible issues:")
+                print("[DEBUG] - Confidence threshold too high?")
+                print("[DEBUG] - Model not loaded correctly?")
+                print("[DEBUG] - Input preprocessing issues?")
         
         return detections, inference_time
     

@@ -57,6 +57,87 @@ def example_hailo_cam0_tracking():
     tracker.config.BOTSORT_TRACKER['with_reid'] = False
     tracker.config.MIN_TRACK_AGE = 8
     
+    # DEBUG: Add diagnostic logging
+    print("\n=== DIAGNOSTIC INFORMATION ===")
+    print(f"HAILO Available: {HAILO_AVAILABLE}")
+    print(f"Enhanced Camera Available: {ENHANCED_CAMERA_AVAILABLE}")
+    print(f"USE_HAILO: {tracker.config.USE_HAILO}")
+    print(f"YOLO Model: {tracker.config.YOLO_MODEL}")
+    print(f"Model exists: {os.path.exists(tracker.config.YOLO_MODEL) if isinstance(tracker.config.YOLO_MODEL, str) else 'N/A'}")
+    print(f"Video Source: {tracker.config.VIDEO_SOURCE}")
+    print(f"Confidence Threshold: {tracker.config.YOLO_CONFIDENCE}")
+    
+    # Test camera initialization first
+    print("\n=== TESTING CAMERA INITIALIZATION ===")
+    try:
+        from enhanced_camera import create_enhanced_camera
+        test_camera = create_enhanced_camera(
+            width=tracker.config.CAM_WIDTH,
+            height=tracker.config.CAM_HEIGHT,
+            fps=tracker.config.CAM_FPS,
+            preferred_method=tracker.config.PREFERRED_CAMERA_METHOD
+        )
+        
+        if test_camera.camera is not None:
+            print(f"✓ Camera initialized successfully with method: {test_camera.camera_type}")
+            
+            # Test reading a frame
+            ret, test_frame = test_camera.read()
+            if ret and test_frame is not None:
+                print(f"✓ Successfully read frame: {test_frame.shape}")
+                print(f"✓ Frame data type: {test_frame.dtype}")
+                print(f"✓ Frame min/max values: {test_frame.min()}/{test_frame.max()}")
+                
+                # Check color channels
+                if len(test_frame.shape) == 3 and test_frame.shape[2] == 3:
+                    print(f"✓ Color channels: BGR format assumed")
+                    # Save a test frame for inspection
+                    cv2.imwrite("debug_frame.jpg", test_frame)
+                    print("✓ Test frame saved to debug_frame.jpg for inspection")
+                else:
+                    print(f"✗ Unexpected frame format: {test_frame.shape}")
+            else:
+                print("✗ Failed to read frame from camera")
+        else:
+            print("✗ Failed to initialize camera")
+            
+        test_camera.release()
+    except Exception as e:
+        print(f"✗ Camera test failed: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    # Test HAILO detector initialization
+    print("\n=== TESTING HAILO DETECTOR ===")
+    if tracker.config.USE_HAILO and hasattr(tracker, 'detector'):
+        try:
+            # Create a dummy frame for testing
+            dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            print(f"Created dummy frame: {dummy_frame.shape}")
+            
+            # Test detection
+            detections, inference_time = tracker.detector.detect(
+                dummy_frame,
+                confidence_threshold=tracker.config.YOLO_CONFIDENCE,
+                iou_threshold=tracker.config.YOLO_IOU_THRESHOLD,
+                classes=tracker.config.YOLO_CLASSES
+            )
+            
+            print(f"✓ HAILO detector test successful")
+            print(f"✓ Detections: {len(detections)}")
+            print(f"✓ Inference time: {inference_time*1000:.2f}ms")
+            
+            # Get performance stats
+            if hasattr(tracker.detector, 'get_performance_stats'):
+                stats = tracker.detector.get_performance_stats()
+                print(f"✓ HAILO Performance Stats: {stats}")
+                
+        except Exception as e:
+            print(f"✗ HAILO detector test failed: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    print("\n=== STARTING TRACKING ===")
     print("Starting HAILO-accelerated tracking with cam0...")
     print("Press 'q' to quit")
     
@@ -65,6 +146,8 @@ def example_hailo_cam0_tracking():
         tracker.process_video(tracker.config.VIDEO_SOURCE)
     except Exception as e:
         print(f"Error during tracking: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def example_hailo_model_download():
@@ -209,6 +292,58 @@ def example_hailo_performance_test():
         print(f"Performance test error: {e}")
 
 
+def example_hailo_video_file_processing():
+    """Example: HAILO-accelerated processing of video file"""
+    print("=== HAILO Video File Processing Example ===")
+    
+    # Check availability
+    if not HAILO_AVAILABLE:
+        print("Error: HAILO SDK not available")
+        return
+    
+    # Get video file path
+    video_path = input("Enter video file path (or press Enter for test_video.mp4): ").strip()
+    if not video_path:
+        video_path = "test_video.mp4"
+    
+    # Check if video file exists
+    if not os.path.exists(video_path):
+        print(f"Error: Video file not found: {video_path}")
+        return
+    
+    # Initialize tracker with HAILO config
+    tracker = YOLOBoTSORTTracker()
+    
+    # Configure for HAILO and video file processing
+    tracker.config.USE_HAILO = True
+    tracker.config.VIDEO_SOURCE = video_path  # Use video file
+    tracker.config.SHOW_VIDEO = True
+    tracker.config.SAVE_VIDEO = True
+    tracker.config.OUTPUT_VIDEO = f"hailo_output_{os.path.basename(video_path)}"
+    
+    # HAILO-optimized settings
+    tracker.config.YOLO_CONFIDENCE = 0.6
+    tracker.config.PROCESS_EVERY_N_FRAMES = 1  # Process every frame for max accuracy
+    tracker.config.MAX_DETECTIONS = 50
+    tracker.config.ENABLE_REID = False  # Disable for performance
+    
+    # Performance settings
+    tracker.config.DISPLAY_SIZE = (1024, 768)
+    tracker.config.BOTSORT_TRACKER['track_buffer'] = 20
+    tracker.config.BOTSORT_TRACKER['with_reid'] = False
+    tracker.config.MIN_TRACK_AGE = 8
+    
+    print(f"Processing video file: {video_path}")
+    print(f"Output will be saved to: {tracker.config.OUTPUT_VIDEO}")
+    print("Press 'q' to quit")
+    
+    # Process video file
+    try:
+        tracker.process_video(tracker.config.VIDEO_SOURCE, tracker.config.OUTPUT_VIDEO)
+    except Exception as e:
+        print(f"Error during video processing: {e}")
+
+
 def example_hailo_camera_info():
     """Example: Display camera and HAILO information"""
     print("=== HAILO + Camera Info Example ===")
@@ -286,12 +421,13 @@ def main():
     print("1. HAILO + cam0 tracking")
     print("2. Download HAILO models")
     print("3. HAILO performance test")
-    print("4. Camera and system info")
-    print("5. Run all examples")
+    print("4. HAILO video file processing")
+    print("5. Camera and system info")
+    print("6. Run all examples")
     print("=" * 50)
     
     try:
-        choice = input("Enter your choice (1-5): ").strip()
+        choice = input("Enter your choice (1-6): ").strip()
         
         if choice == "1":
             example_hailo_cam0_tracking()
@@ -300,12 +436,15 @@ def main():
         elif choice == "3":
             example_hailo_performance_test()
         elif choice == "4":
-            example_hailo_camera_info()
+            example_hailo_video_file_processing()
         elif choice == "5":
+            example_hailo_camera_info()
+        elif choice == "6":
             print("Running all examples...")
             example_hailo_camera_info()
             example_hailo_model_download()
             example_hailo_performance_test()
+            example_hailo_video_file_processing()
             example_hailo_cam0_tracking()
         else:
             print("Invalid choice. Running default HAILO + cam0 example...")
