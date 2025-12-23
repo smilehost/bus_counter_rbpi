@@ -31,6 +31,9 @@ class YOLOBoTSORTTracker:
         # Load configuration
         self.config = Config() if config_path is None else self._load_config(config_path)
         
+        # Device setup - use device from config (must be done before detector initialization)
+        self.device = self.config.DEVICE
+        
         # Initialize detector (HAILO or regular YOLO)
         self.detector = self._initialize_detector()
         
@@ -39,6 +42,10 @@ class YOLOBoTSORTTracker:
         tracker_config = self.config.BOTSORT_TRACKER.copy()
         if hasattr(self.config, 'ENABLE_REID'):
             tracker_config['with_reid'] = self.config.ENABLE_REID
+        
+        # Add device information to tracker config
+        tracker_config['device'] = self.device
+        tracker_config['reid_device'] = self.config.REID_DEVICE
         
         self.tracker = BoTSORT(tracker_config)
         
@@ -53,14 +60,14 @@ class YOLOBoTSORTTracker:
         # Camera setup
         self.camera = None
         
-        # Device setup
-        self.device = self._setup_device()
-        
         print(f"YOLO-BoTSORT Tracker initialized")
         print(f"Detector Type: {'HAILO' if self.config.USE_HAILO else 'YOLO'}")
         print(f"Model: {self.config.YOLO_MODEL}")
         print(f"Device: {self.device}")
         print(f"ReID Enabled: {tracker_config['with_reid']}")
+        
+        # Print device information
+        self.config.print_device_info()
         
         # Print available YOLO classes
         self.print_available_classes()
@@ -98,6 +105,14 @@ class YOLOBoTSORTTracker:
         
         try:
             detector = YOLO(self.config.YOLO_MODEL)
+            # Move model to the configured device
+            if self.device == "cuda":
+                detector.to('cuda')
+                print(f"YOLO detector moved to CUDA")
+            elif self.device == "cpu":
+                detector.to('cpu')
+                print(f"YOLO detector moved to CPU")
+            
             print(f"YOLO detector initialized: {self.config.YOLO_MODEL}")
             return detector
         except Exception as e:
@@ -107,6 +122,12 @@ class YOLOBoTSORTTracker:
                 default_model = "yolo11n.pt"
                 print(f"Trying with default model: {default_model}")
                 detector = YOLO(default_model)
+                # Move model to the configured device
+                if self.device == "cuda":
+                    detector.to('cuda')
+                elif self.device == "cpu":
+                    detector.to('cpu')
+                
                 self.config.YOLO_MODEL = default_model
                 print(f"YOLO detector initialized with default model: {default_model}")
                 return detector
@@ -114,18 +135,14 @@ class YOLOBoTSORTTracker:
                 print(f"Failed to initialize YOLO detector with default model: {e2}")
                 raise RuntimeError(f"Could not initialize any detector: HAILO failed, YOLO with {self.config.YOLO_MODEL} failed, YOLO with default failed")
     
-    def _setup_device(self):
-        """Setup computation device"""
+    def _setup_device_for_yolo(self):
+        """Setup computation device for YOLO model"""
         if self.config.USE_HAILO:
             return "hailo"  # HAILO device
-        elif torch.cuda.is_available():
-            device = "cuda"
-            print(f"GPU available: {torch.cuda.get_device_name(0)}")
+        elif self.device == "cuda":
+            return "cuda"
         else:
-            device = "cpu"
-            print("GPU not available, using CPU")
-        
-        return device
+            return "cpu"
     
     def _load_config(self, config_path):
         """Load configuration from file"""
@@ -305,6 +322,11 @@ class YOLOBoTSORTTracker:
                 # Fallback to regular YOLO
                 self.config.USE_HAILO = False
                 self.detector = YOLO("yolo11n.pt")  # Use default YOLO model
+                # Move model to the configured device
+                if self.device == "cuda":
+                    self.detector.to('cuda')
+                elif self.device == "cpu":
+                    self.detector.to('cpu')
                 print(f"[INFO] Switched to YOLO model: yolo11n.pt")
                 
                 # Retry with regular YOLO
@@ -330,6 +352,30 @@ class YOLOBoTSORTTracker:
                 detections = self._extract_detections(results[0])
             except Exception as e:
                 raise e
+        
+        # Extract ReID features if enabled
+        reid_features = None
+        if self.config.BOTSORT_TRACKER.get('with_reid', False) and len(detections) > 0:
+            try:
+                boxes = detections[:, :4]  # Extract bounding boxes
+                reid_features = self.tracker.extract_reid_features(frame, boxes)
+                if reid_features is not None and frame_count % 30 == 0:
+                    print(f"[DEBUG] Extracted ReID features: {reid_features.shape}")
+            except Exception as e:
+                print(f"[ERROR] ReID feature extraction failed: {e}")
+                reid_features = None
+        
+        # Append ReID features to detections if available
+        if reid_features is not None:
+            # detections format: [x1, y1, x2, y2, confidence, class_id, reid_features...]
+            detections_with_reid = []
+            for i, detection in enumerate(detections):
+                if i < len(reid_features):
+                    detection_with_reid = np.concatenate([detection, reid_features[i]])
+                    detections_with_reid.append(detection_with_reid)
+                else:
+                    detections_with_reid.append(detection)
+            detections = np.array(detections_with_reid) if detections_with_reid else detections
         
         self.performance_monitor.add_detection_time(detection_time)
         

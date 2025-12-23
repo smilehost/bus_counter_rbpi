@@ -6,15 +6,34 @@ class Config:
         # --- Platform Detection ---
         self.IS_RASPBERRY_PI = platform.machine() in ('armv7l', 'aarch64')
         self.IS_PI5 = self.IS_RASPBERRY_PI and platform.processor() == ''
+        self.IS_WINDOWS = platform.system().lower() == 'windows'
+        
+        # --- Device Detection ---
+        self.CUDA_AVAILABLE = self._check_cuda_available()
+        self.HAILO_AVAILABLE = self._check_hailo_available()
         
         # --- YOLO Model Configuration ---
-        # Use HAILO-optimized model for Pi5, regular YOLO for development
-        if self.IS_PI5:
+        # Platform-specific model selection
+        if self.IS_PI5 and self.HAILO_AVAILABLE:
+            # Raspberry Pi 5 with HAILO accelerator
             self.YOLO_MODEL = "yolov8n.hef"  # HAILO compiled model
             self.USE_HAILO = True
-        else:
-            self.YOLO_MODEL = "yolo11n.pt"  # Regular PyTorch model for development
+            self.DEVICE = "hailo"
+        elif self.IS_WINDOWS and self.CUDA_AVAILABLE:
+            # Windows with CUDA GPU
+            self.YOLO_MODEL = "medium.pt"  # Regular PyTorch model
             self.USE_HAILO = False
+            self.DEVICE = "cuda"
+        elif self.CUDA_AVAILABLE:
+            # Other platforms with CUDA GPU
+            self.YOLO_MODEL = "medium.pt"  # Regular PyTorch model
+            self.USE_HAILO = False
+            self.DEVICE = "cuda"
+        else:
+            # Fallback to CPU
+            self.YOLO_MODEL = "medium.pt"  # Regular PyTorch model
+            self.USE_HAILO = False
+            self.DEVICE = "cpu"
             
         # LOWERED: High confidence kills tracking in crowds.
         # 0.4 - 0.5 is usually the sweet spot for tracking.
@@ -54,7 +73,7 @@ class Config:
         # If you have a good GPU, 'osnet_x1_0_msmt17.pt' is much better for multi-person distinction
         # than 'x0_25', though slightly slower.
         self.REID_MODEL = "osnet_x0_25_msmt17.pt"
-        self.REID_DEVICE = "cuda" if os.system("nvidia-smi") == 0 else "cpu"
+        self.REID_DEVICE = self.DEVICE  # Use the same device as main detector
         
         # --- HAILO Configuration ---
         self.HAILO_DEVICE = "hailo0"  # Default HAILO device
@@ -144,6 +163,84 @@ class Config:
             self.PROCESS_EVERY_N_FRAMES = 1
             self.DEBUG_FRAME_INTERVAL = 10
             self.ENABLE_REID = True
+    
+    def _check_cuda_available(self):
+        """Check if CUDA GPU is available"""
+        try:
+            import torch
+            # Check if PyTorch is installed and CUDA is available
+            if not torch.cuda.is_available():
+                print("CUDA not available in PyTorch")
+                return False
+            
+            # Check if we can actually access the GPU
+            try:
+                gpu_count = torch.cuda.device_count()
+                if gpu_count > 0:
+                    gpu_name = torch.cuda.get_device_name(0)
+                    print(f"Found {gpu_count} CUDA GPU(s): {gpu_name}")
+                    return True
+                else:
+                    print("No CUDA GPUs found")
+                    return False
+            except Exception as e:
+                print(f"Error accessing CUDA GPU: {e}")
+                return False
+        except ImportError:
+            print("PyTorch not available for CUDA detection")
+            return False
+    
+    def _check_hailo_available(self):
+        """Check if HAILO SDK is available"""
+        try:
+            from hailo_platform import HEF, VDevice
+            return True
+        except ImportError:
+            return False
+    
+    def get_device_info(self):
+        """Get information about the available device"""
+        info = {
+            'platform': platform.system(),
+            'machine': platform.machine(),
+            'device': self.DEVICE,
+            'use_hailo': self.USE_HAILO,
+            'model': self.YOLO_MODEL
+        }
+        
+        if self.DEVICE == "cuda":
+            try:
+                import torch
+                info['cuda_version'] = torch.version.cuda
+                info['gpu_count'] = torch.cuda.device_count()
+                if torch.cuda.is_available():
+                    info['gpu_name'] = torch.cuda.get_device_name(0)
+            except:
+                pass
+        elif self.DEVICE == "hailo":
+            info['hailo_device'] = getattr(self, 'HAILO_DEVICE', 'hailo0')
+        
+        return info
+    
+    def print_device_info(self):
+        """Print device information"""
+        info = self.get_device_info()
+        print("=" * 50)
+        print("DEVICE CONFIGURATION")
+        print("=" * 50)
+        print(f"Platform: {info['platform']} ({info['machine']})")
+        print(f"Device: {info['device']}")
+        print(f"Model: {info['model']}")
+        print(f"Use HAILO: {info['use_hailo']}")
+        
+        if info['device'] == "cuda":
+            print(f"CUDA Version: {info.get('cuda_version', 'Unknown')}")
+            print(f"GPU Count: {info.get('gpu_count', 0)}")
+            if 'gpu_name' in info:
+                print(f"GPU Name: {info['gpu_name']}")
+        elif info['device'] == "hailo":
+            print(f"HAILO Device: {info.get('hailo_device', 'hailo0')}")
+        print("=" * 50)
     
     def __getitem__(self, key):
         return getattr(self, key)

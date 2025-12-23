@@ -9,6 +9,7 @@ import time
 import os
 import glob
 from yolo_botsort_tracker import YOLOBoTSORTTracker
+from yolo_person_counter import YOLOPersonCounter
 from config import Config
 
 def example_webcam_tracking():
@@ -282,6 +283,40 @@ def example_debug_ghost_tracking(video_path="test_video.mp4"):
     tracker.process_video(tracker.config.VIDEO_SOURCE, tracker.config.OUTPUT_VIDEO)
 
 
+def example_yolo_person_counting(video_path="test_video.mp4"):
+    """Example: YOLO-based person counting in video file"""
+    print("=== YOLO Person Counting Example ===")
+    
+    # Initialize person counter using config settings
+    counter = YOLOPersonCounter(
+        model_path=None,  # Use the model from config.py
+        confidence=None,  # Use the confidence from config.py
+        device=None  # Auto-select device from config.py
+    )
+    
+    # Configure output
+    output_path = f"person_count_output_{os.path.basename(video_path)}"
+    
+    print(f"Processing video: {video_path}")
+    print(f"Output will be saved to: {output_path}")
+    print("Press 'q' to quit")
+    
+    # Process video file
+    counter.process_video(video_path, output_path, show_preview=True)
+    
+    # Get and display summary statistics
+    summary = counter.get_counts_summary()
+    print("\nSummary Statistics:")
+    for key, value in summary.items():
+        print(f"  {key}: {value}")
+    
+    # Get frame data for first 10 frames as example
+    frame_data = counter.get_frame_data((0, min(10, len(counter.frame_data))))
+    print("\nFirst 10 frames data:")
+    for data in frame_data:
+        print(f"  Frame {data['frame_number']}: {data['person_count']} people")
+
+
 def find_mp4_files():
     """Find all MP4 files that don't contain 'output' in their filename"""
     mp4_files = []
@@ -335,11 +370,12 @@ def main():
     print("4. Performance optimization")
     print("5. Raspberry Pi 5 optimization")
     print("6. DEBUG: Ghost tracking test")
-    print("7. Run all examples (if available)")
+    print("7. YOLO Person Counting (isolated frame counting)")
+    print("8. Run all examples (if available)")
     print("=" * 40)
     
     try:
-        choice = input("Enter your choice (1-6): ").strip()
+        choice = input("Enter your choice (1-8): ").strip()
         
         if choice == "1":
             example_webcam_tracking_with_fallback()
@@ -362,6 +398,12 @@ def main():
             else:
                 print("No valid video file selected for debug test.")
         elif choice == "7":
+            video_path = select_video_file()
+            if video_path:
+                example_yolo_person_counting(video_path)
+            else:
+                print("No valid video file selected for person counting.")
+        elif choice == "8":
             print("Running multiple examples...")
             # Note: This would require actual video files
             print("Note: Batch processing requires actual video files")

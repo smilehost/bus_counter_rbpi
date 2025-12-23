@@ -3,6 +3,13 @@ pandas>=2.0.0
 ultralytics>=8.0.0
 cvzone>=1.5.0
 numpy>=1.21.0,<2.0.0
+
+# PyTorch - Platform specific installation
+# For Windows with CUDA GPU:
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+# For Windows CPU only:
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# For automatic detection (current):
 torch>=2.0.0
 torchvision>=0.15.0
 cython>=0.29.0

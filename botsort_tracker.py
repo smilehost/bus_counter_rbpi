@@ -30,6 +30,15 @@ class BoTSORT:
         self.frame_rate = config['frame_rate']
         self.fuse_score = config['fuse_score']
         
+        # Device configuration
+        self.device = config.get('device', 'cpu')
+        self.reid_device = config.get('reid_device', 'cpu')
+        
+        # Initialize ReID model if enabled
+        self.reid_model = None
+        if self.with_reid:
+            self._init_reid_model()
+        
         # Track history for management
         self.lost_tracks = []
         self.removed_tracks = []
@@ -414,6 +423,90 @@ class BoTSORT:
         
         # Remove deleted tracks
         self.tracks = [t for t in self.tracks if t.state != Track.Deleted]
+    
+    def _init_reid_model(self):
+        """Initialize ReID model on the specified device"""
+        try:
+            # Try to import torchreid
+            import torchreid
+            from torchreid import models
+            
+            # Initialize ReID model
+            model_name = 'osnet_x0_25'  # Default lightweight model
+            self.reid_model = models.build_model(
+                name=model_name,
+                num_classes=1000,  # Placeholder, will be adjusted
+                pretrained=True
+            )
+            
+            # Move model to specified device
+            if self.reid_device == 'cuda' and torch.cuda.is_available():
+                self.reid_model = self.reid_model.cuda()
+                print(f"ReID model moved to CUDA")
+            else:
+                self.reid_model = self.reid_model.cpu()
+                print(f"ReID model moved to CPU")
+            
+            # Set model to evaluation mode
+            self.reid_model.eval()
+            
+            print(f"ReID model initialized: {model_name} on {self.reid_device}")
+            
+        except ImportError:
+            print("Warning: torchreid not available. ReID will be disabled.")
+            self.with_reid = False
+        except Exception as e:
+            print(f"Error initializing ReID model: {e}")
+            print("ReID will be disabled.")
+            self.with_reid = False
+    
+    def extract_reid_features(self, frame, boxes):
+        """Extract ReID features from detected bounding boxes"""
+        if not self.with_reid or self.reid_model is None:
+            return None
+        
+        try:
+            import torch
+            
+            # Extract image patches from bounding boxes
+            patches = []
+            for box in boxes:
+                x1, y1, x2, y2 = map(int, box)
+                # Ensure coordinates are within frame bounds
+                x1 = max(0, min(x1, frame.shape[1]))
+                y1 = max(0, min(y1, frame.shape[0]))
+                x2 = max(0, min(x2, frame.shape[1]))
+                y2 = max(0, min(y2, frame.shape[0]))
+                
+                if x2 > x1 and y2 > y1:
+                    patch = frame[y1:y2, x1:x2]
+                    # Resize patch to expected input size (usually 256x128 for ReID)
+                    patch = cv2.resize(patch, (128, 256))
+                    patches.append(patch)
+            
+            if not patches:
+                return None
+            
+            # Convert patches to tensor
+            patches = np.array(patches)
+            patches = torch.from_numpy(patches).float()
+            patches = patches.permute(0, 3, 1, 2)  # NHWC to NCHW
+            patches = patches / 255.0  # Normalize to [0, 1]
+            
+            # Move to device
+            if self.reid_device == 'cuda' and torch.cuda.is_available():
+                patches = patches.cuda()
+            
+            # Extract features
+            with torch.no_grad():
+                features = self.reid_model(patches)
+                features = features.cpu().numpy()
+            
+            return features
+            
+        except Exception as e:
+            print(f"Error extracting ReID features: {e}")
+            return None
 
 
 class Track:
