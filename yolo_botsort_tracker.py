@@ -31,6 +31,9 @@ class YOLOBoTSORTTracker:
         # Load configuration
         self.config = Config() if config_path is None else self._load_config(config_path)
         
+        # Load detection zone configuration if available
+        self.config.load_zone_config()
+        
         # Device setup - use device from config (must be done before detector initialization)
         self.device = self.config.DEVICE
         
@@ -283,6 +286,108 @@ class YOLOBoTSORTTracker:
             # Print final statistics
             self._print_final_statistics()
     
+    def _is_detection_in_zone(self, bbox, frame_width, frame_height):
+        """Check if a detection's bounding box is within the detection zone
+        
+        Args:
+            bbox: Bounding box in pixel coordinates [x1, y1, x2, y2]
+            frame_width: Frame width in pixels
+            frame_height: Frame height in pixels
+            
+        Returns:
+            True if the detection is considered to be in the detection zone
+        """
+        zone = self.config.DETECTION_ZONE
+        
+        # Convert normalized zone coordinates to pixel coordinates
+        zone_x1 = zone['x1'] * frame_width
+        zone_y1 = zone['y1'] * frame_height
+        zone_x2 = zone['x2'] * frame_width
+        zone_y2 = zone['y2'] * frame_height
+        
+        # Get detection bounding box coordinates
+        det_x1, det_y1, det_x2, det_y2 = bbox
+        
+        # Calculate center point of detection
+        det_center_x = (det_x1 + det_x2) / 2
+        det_center_y = (det_y1 + det_y2) / 2
+        
+        # Check if center is within zone
+        if (zone_x1 <= det_center_x <= zone_x2 and
+            zone_y1 <= det_center_y <= zone_y2):
+            return True
+        
+        # Calculate overlap area for partial detection
+        overlap_x1 = max(det_x1, zone_x1)
+        overlap_y1 = max(det_y1, zone_y1)
+        overlap_x2 = min(det_x2, zone_x2)
+        overlap_y2 = min(det_y2, zone_y2)
+        
+        if overlap_x2 <= overlap_x1 or overlap_y2 <= overlap_y1:
+            return False  # No overlap
+        
+        # Calculate areas
+        overlap_area = (overlap_x2 - overlap_x1) * (overlap_y2 - overlap_y1)
+        det_area = (det_x2 - det_x1) * (det_y2 - det_y1)
+        
+        # Check if overlap exceeds margin threshold
+        if det_area > 0:
+            overlap_ratio = overlap_area / det_area
+            return overlap_ratio >= self.config.DETECTION_ZONE_MARGIN
+        
+        return False
+    
+    def _filter_detections_by_zone(self, detections, frame_width, frame_height):
+        """Filter detections to only include those within the detection zone
+        
+        Args:
+            detections: Array of detections [x1, y1, x2, y2, confidence, class_id, ...]
+            frame_width: Frame width in pixels
+            frame_height: Frame height in pixels
+            
+        Returns:
+            Filtered array of detections
+        """
+        if not self.config.DETECTION_ZONE_ENABLED:
+            return detections
+        
+        if len(detections) == 0:
+            return detections
+        
+        filtered_detections = []
+        for detection in detections:
+            bbox = detection[:4]  # [x1, y1, x2, y2]
+            if self._is_detection_in_zone(bbox, frame_width, frame_height):
+                filtered_detections.append(detection)
+        
+        return np.array(filtered_detections) if filtered_detections else np.array([])
+    
+    def _filter_tracks_by_zone(self, tracks, frame_width, frame_height):
+        """Filter tracks to only include those within the detection zone
+        
+        Args:
+            tracks: List of track objects
+            frame_width: Frame width in pixels
+            frame_height: Frame height in pixels
+            
+        Returns:
+            Filtered list of tracks
+        """
+        if not self.config.DETECTION_ZONE_ENABLED:
+            return tracks
+        
+        filtered_tracks = []
+        for track in tracks:
+            bbox = track.bbox
+            if self._is_detection_in_zone(bbox, frame_width, frame_height):
+                filtered_tracks.append(track)
+            else:
+                # Mark track as lost if it's outside the zone
+                # This will cause the tracker to eventually delete it
+                track.state = 2  # Lost state
+        
+        return filtered_tracks
+    
     def process_frame(self, frame, frame_count):
         """Process a single frame"""
         # Initialize variables
@@ -296,6 +401,7 @@ class YOLOBoTSORTTracker:
             print(f"[DEBUG] USE_HAILO: {self.config.USE_HAILO}")
             print(f"[DEBUG] YOLO_CONFIDENCE: {self.config.YOLO_CONFIDENCE}")
             print(f"[DEBUG] YOLO_CLASSES: {self.config.YOLO_CLASSES}")
+            print(f"[DEBUG] DETECTION_ZONE_ENABLED: {self.config.DETECTION_ZONE_ENABLED}")
         
         # Always predict track positions for smooth tracking
         self.tracker._predict_tracks()
@@ -353,30 +459,6 @@ class YOLOBoTSORTTracker:
             except Exception as e:
                 raise e
         
-        # Extract ReID features if enabled
-        reid_features = None
-        if self.config.BOTSORT_TRACKER.get('with_reid', False) and len(detections) > 0:
-            try:
-                boxes = detections[:, :4]  # Extract bounding boxes
-                reid_features = self.tracker.extract_reid_features(frame, boxes)
-                if reid_features is not None and frame_count % 30 == 0:
-                    print(f"[DEBUG] Extracted ReID features: {reid_features.shape}")
-            except Exception as e:
-                print(f"[ERROR] ReID feature extraction failed: {e}")
-                reid_features = None
-        
-        # Append ReID features to detections if available
-        if reid_features is not None:
-            # detections format: [x1, y1, x2, y2, confidence, class_id, reid_features...]
-            detections_with_reid = []
-            for i, detection in enumerate(detections):
-                if i < len(reid_features):
-                    detection_with_reid = np.concatenate([detection, reid_features[i]])
-                    detections_with_reid.append(detection_with_reid)
-                else:
-                    detections_with_reid.append(detection)
-            detections = np.array(detections_with_reid) if detections_with_reid else detections
-        
         self.performance_monitor.add_detection_time(detection_time)
         
         # DEBUG: Log detection results
@@ -404,6 +486,40 @@ class YOLOBoTSORTTracker:
                 print(f"[DEBUG] - Color space issue? BGR format expected")
                 print(f"[DEBUG] - Confidence too high? threshold={self.config.YOLO_CONFIDENCE}")
         
+        # Filter detections by detection zone BEFORE sending to tracker
+        height = frame.shape[0]
+        width = frame.shape[1]
+        
+        if self.config.DETECTION_ZONE_ENABLED:
+            detections_before_filter = len(detections)
+            detections = self._filter_detections_by_zone(detections, width, height)
+            if frame_count % 30 == 0:
+                print(f"[DEBUG] Detection zone filter: {detections_before_filter} -> {len(detections)} detections")
+        
+        # Extract ReID features if enabled
+        reid_features = None
+        if self.config.BOTSORT_TRACKER.get('with_reid', False) and len(detections) > 0:
+            try:
+                boxes = detections[:, :4]  # Extract bounding boxes
+                reid_features = self.tracker.extract_reid_features(frame, boxes)
+                if reid_features is not None and frame_count % 30 == 0:
+                    print(f"[DEBUG] Extracted ReID features: {reid_features.shape}")
+            except Exception as e:
+                print(f"[ERROR] ReID feature extraction failed: {e}")
+                reid_features = None
+        
+        # Append ReID features to detections if available
+        if reid_features is not None:
+            # detections format: [x1, y1, x2, y2, confidence, class_id, reid_features...]
+            detections_with_reid = []
+            for i, detection in enumerate(detections):
+                if i < len(reid_features):
+                    detection_with_reid = np.concatenate([detection, reid_features[i]])
+                    detections_with_reid.append(detection_with_reid)
+                else:
+                    detections_with_reid.append(detection)
+            detections = np.array(detections_with_reid) if detections_with_reid else detections
+        
         # Start tracking timer
         tracking_start = time.time()
         
@@ -412,6 +528,14 @@ class YOLOBoTSORTTracker:
         
         tracking_time = time.time() - tracking_start
         self.performance_monitor.add_tracking_time(tracking_time)
+        
+        # Filter tracks by detection zone AFTER tracker update
+        # This stops tracking objects that have left the zone
+        if self.config.DETECTION_ZONE_ENABLED:
+            tracks_before_filter = len(tracks)
+            tracks = self._filter_tracks_by_zone(tracks, width, height)
+            if frame_count % 30 == 0:
+                print(f"[DEBUG] Track zone filter: {tracks_before_filter} -> {len(tracks)} tracks")
         
         # DEBUG: Log tracking results
         if frame_count % 30 == 0:  # Log every 30 frames
@@ -425,7 +549,8 @@ class YOLOBoTSORTTracker:
         
         # Update bus counter
         height = frame.shape[0]
-        self.bus_counter.update(tracks, height)
+        width = frame.shape[1]
+        self.bus_counter.update(tracks, height, width)
         
         # Resize frame for display
         display_frame = resize_frame(frame, self.config.DISPLAY_SIZE)
@@ -435,8 +560,30 @@ class YOLOBoTSORTTracker:
             display_frame, tracks, original_frame_size=frame.shape[:2], show_trails=True, show_ids=True
         )
         
-        # Draw counting line
-        line_y = int(self.config.DISPLAY_SIZE[1] * 0.5)
+        # Draw detection zone if enabled
+        self.visualizer.draw_detection_zone(annotated_frame)
+        
+        # Draw counting line - calculate correct position accounting for resize scaling and offset
+        # The counting line position is based on the original frame height
+        if self.config.COUNTING_LINE_Y is None:
+            counting_line_y = frame.shape[0] // 2
+        else:
+            counting_line_y = self.config.COUNTING_LINE_Y
+        
+        # Calculate the scale factor used by resize_frame()
+        frame_height, frame_width = frame.shape[:2]
+        target_width, target_height = self.config.DISPLAY_SIZE
+        scale = min(target_width / frame_width, target_height / frame_height)
+        
+        # Calculate new dimensions after resize
+        new_height = int(frame_height * scale)
+        
+        # Calculate y_offset (letterboxing) used by resize_frame()
+        y_offset = (target_height - new_height) // 2
+        
+        # Calculate the correct visual line position on the display frame
+        line_y = int(counting_line_y * scale) + y_offset
+        
         self.visualizer.draw_counting_line(annotated_frame, line_y)
         
         # Draw statistics

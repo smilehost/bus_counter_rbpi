@@ -1,5 +1,7 @@
 import os
 import platform
+import json
+
 
 class Config:
     def __init__(self):
@@ -21,17 +23,17 @@ class Config:
             self.DEVICE = "hailo"
         elif self.IS_WINDOWS and self.CUDA_AVAILABLE:
             # Windows with CUDA GPU
-            self.YOLO_MODEL = "medium.pt"  # Regular PyTorch model
+            self.YOLO_MODEL = "best.pt"  # Regular PyTorch model
             self.USE_HAILO = False
             self.DEVICE = "cuda"
         elif self.CUDA_AVAILABLE:
             # Other platforms with CUDA GPU
-            self.YOLO_MODEL = "medium.pt"  # Regular PyTorch model
+            self.YOLO_MODEL = "best.pt"  # Regular PyTorch model
             self.USE_HAILO = False
             self.DEVICE = "cuda"
         else:
             # Fallback to CPU
-            self.YOLO_MODEL = "medium.pt"  # Regular PyTorch model
+            self.YOLO_MODEL = "best.pt"  # Regular PyTorch model
             self.USE_HAILO = False
             self.DEVICE = "cpu"
             
@@ -44,14 +46,14 @@ class Config:
         # --- BoTSORT Configuration ---
         self.BOTSORT_TRACKER = {
             # Must be slightly higher or equal to YOLO_CONFIDENCE
-            'track_high_thresh': 0.65, 
+            'track_high_thresh': 0.55, 
             
-            'track_low_thresh': 0.45,
+            'track_low_thresh': 0.40,
             
             # LOWERED: Easier to start tracking a new person entering the frame
             'new_track_thresh': 0.65, 
             
-            'track_buffer': 40,  # INCREASED: Keep "lost" tracks in memory for 2 seconds (at 30fps) to recover from occlusions
+            'track_buffer': 45,  # INCREASED: Keep "lost" tracks in memory for 2 seconds (at 30fps) to recover from occlusions
             
             # CRITICAL FIX: 0.9 is too strict. 0.7 allows for movement between frames.
             # If this is too high, you get "Ghosting" (tracker creates new ID for same person).
@@ -138,6 +140,9 @@ class Config:
         self.FONT_THICKNESS = 2
         self.LINE_THICKNESS = 2
         
+        # --- Config Editor Frame Size ---
+        self.CONFIG_EDITOR_FRAME_SIZE = (640, 600)  # Default frame size for config editor (width, height)
+        
         # --- Colors (BGR) ---
         self.COLORS = {
             'bbox': (0, 255, 0),
@@ -147,9 +152,28 @@ class Config:
         }
         
         # --- Bus Counting Configuration ---
-        self.COUNTING_LINE_Y = None 
+        self.COUNTING_LINE_Y = None
         self.COUNTING_DIRECTION = "both"
         self.MIN_TRACK_AGE = 3 # Lowered: Count faster
+        
+        # --- Rotated Counting Line Configuration ---
+        self.COUNTING_LINE_ROTATED = False  # Enable rotated line mode
+        self.COUNTING_LINE_ENDPOINTS = {
+            'x1': 0.2,  # Normalized coordinates (0-1)
+            'y1': 0.5,
+            'x2': 0.8,
+            'y2': 0.5
+        }
+        
+        # --- Detection Zone Configuration ---
+        self.DETECTION_ZONE_ENABLED = False
+        self.DETECTION_ZONE = {
+            'x1': 0.0,  # Normalized coordinates (0-1)
+            'y1': 0.0,
+            'x2': 1.0,
+            'y2': 1.0
+        }
+        self.DETECTION_ZONE_MARGIN = 0.5  # 50% overlap threshold for partial detections
         
         # --- Performance ---
         # Optimize for Pi5 with HAILO 8L
@@ -247,3 +271,43 @@ class Config:
     
     def __setitem__(self, key, value):
         setattr(self, key, value)
+    
+    def save_zone_config(self):
+        """Save detection zone and counting line configuration to JSON file"""
+        zone_config = {
+            'DETECTION_ZONE_ENABLED': self.DETECTION_ZONE_ENABLED,
+            'DETECTION_ZONE': self.DETECTION_ZONE,
+            'DETECTION_ZONE_MARGIN': self.DETECTION_ZONE_MARGIN,
+            'COUNTING_LINE_ROTATED': self.COUNTING_LINE_ROTATED,
+            'COUNTING_LINE_ENDPOINTS': self.COUNTING_LINE_ENDPOINTS
+        }
+        
+        try:
+            with open('detection_zone_config.json', 'w') as f:
+                json.dump(zone_config, f, indent=4)
+            print("Detection zone and counting line configuration saved to detection_zone_config.json")
+        except Exception as e:
+            print(f"Error saving zone configuration: {e}")
+    
+    def load_zone_config(self):
+        """Load detection zone and counting line configuration from JSON file"""
+        try:
+            if os.path.exists('detection_zone_config.json'):
+                with open('detection_zone_config.json', 'r') as f:
+                    zone_config = json.load(f)
+                
+                self.DETECTION_ZONE_ENABLED = zone_config.get('DETECTION_ZONE_ENABLED', False)
+                self.DETECTION_ZONE = zone_config.get('DETECTION_ZONE', {
+                    'x1': 0.0, 'y1': 0.0, 'x2': 1.0, 'y2': 1.0
+                })
+                self.DETECTION_ZONE_MARGIN = zone_config.get('DETECTION_ZONE_MARGIN', 0.5)
+                self.COUNTING_LINE_ROTATED = zone_config.get('COUNTING_LINE_ROTATED', False)
+                self.COUNTING_LINE_ENDPOINTS = zone_config.get('COUNTING_LINE_ENDPOINTS', {
+                    'x1': 0.2, 'y1': 0.5, 'x2': 0.8, 'y2': 0.5
+                })
+                
+                print("Detection zone and counting line configuration loaded from detection_zone_config.json")
+            else:
+                print("No detection zone configuration file found, using defaults")
+        except Exception as e:
+            print(f"Error loading zone configuration: {e}")
