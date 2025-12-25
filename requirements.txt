@@ -24,9 +24,6 @@ mtcnn>=0.1.0
 retina-face>=0.0.12
 psutil>=5.8.0
 
-# HAILO AI Accelerator dependencies
-# Optional: for model compilation and optimization
-# hailo-sdk>=4.17.0
 
 # Raspberry Pi 5 camera support
 # For Pi Camera Module (install via apt on Raspberry Pi OS)

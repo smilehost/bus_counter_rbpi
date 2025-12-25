@@ -1,11 +1,10 @@
 # YOLO-BoTSORT Multi-Object Tracking System
 
-A comprehensive multi-object tracking system that combines YOLO detection with BoTSORT tracking for bus counting and general object tracking applications. Optimized for both Windows development and Raspberry Pi 5 deployment with **HAILO 8L AI Accelerator** support.
+A comprehensive multi-object tracking system that combines YOLO detection with BoTSORT tracking for bus counting and general object tracking applications. Optimized for both Windows development and Raspberry Pi 5 deployment.
 
 ## Features
 
 - **YOLO Detection**: Uses Ultralytics YOLOv8 for fast and accurate object detection
-- **HAILO 8L Acceleration**: Hardware-accelerated inference on Raspberry Pi 5
 - **BoTSORT Tracking**: Advanced tracking algorithm with ReID capabilities
 - **Bus Counting**: Specialized counting functionality with directional tracking
 - **Real-time Processing**: Optimized for real-time video processing
@@ -20,8 +19,6 @@ A comprehensive multi-object tracking system that combines YOLO detection with B
 
 - Python 3.8 or higher
 - CUDA-compatible GPU (recommended for development)
-- Raspberry Pi 5 with HAILO 8L AI Accelerator (for deployment)
-- HAILO SDK installed on Pi5
 
 ### Install Dependencies
 
@@ -30,26 +27,6 @@ A comprehensive multi-object tracking system that combines YOLO detection with B
 
 ```bash
 pip install -r requirements.txt
-```
-
-### HAILO 8L Setup (Pi5 Deployment)
-
-1. **Install HAILO SDK** on Raspberry Pi 5:
-```bash
-# Follow HAILO official installation guide
-# Typically involves:
-sudo apt update
-sudo apt install hailort-all
-```
-
-2. **Verify HAILO Installation**:
-```bash
-hailortcli query
-```
-
-3. **Download HAILO Models**:
-```bash
-python hailo_example_usage.py  # Select option 2 to download models
 ```
 
 ### Manual Installation (if requirements.txt fails)
@@ -85,27 +62,6 @@ pip install "retina-face>=0.0.17"
 pip install "psutil>=5.8.0"
 ```
 
-### Raspberry Pi 5 with HAILO 8L Installation
-
-For Raspberry Pi 5 deployment with HAILO 8L AI Accelerator:
-
-```bash
-# Install HAILO-specific dependencies
-pip install hailort>=4.17.0
-pip install hailo-platform>=4.17.0
-
-# Install Pi5 camera support
-pip install picamera2>=0.3.12
-pip install libcamera>=0.2.0
-
-# Install CPU version of PyTorch (HAILO handles inference)
-pip install torch==2.3.1+cpu
-pip install torchvision==0.18.1+cpu
-
-# Install other dependencies
-pip install -r requirements.txt
-```
-
 ## Quick Start
 
 ### Basic Usage
@@ -121,23 +77,6 @@ python yolo_botsort_tracker.py
 python yolo_botsort_tracker.py --source path/to/video.mp4 --output output_video.mp4
 ```
 
-#### HAILO Deployment (Raspberry Pi 5)
-1. **HAILO + cam0 Tracking**:
-```bash
-python yolo_botsort_tracker.py  # Automatically uses HAILO if available
-```
-
-2. **HAILO Examples**:
-```bash
-python hailo_example_usage.py
-```
-
-This will show a menu with HAILO-specific examples:
-- HAILO + cam0 tracking
-- Download HAILO models
-- HAILO performance test
-- Camera and system info
-
 ### Example Usage
 
 #### Regular Examples
@@ -145,32 +84,11 @@ This will show a menu with HAILO-specific examples:
 python example_usage.py
 ```
 
-#### HAILO Examples
-```bash
-python hailo_example_usage.py
-```
-
 ## Configuration
 
 ### Main Configuration (`config.py`)
 
 The configuration automatically detects the platform and optimizes settings:
-
-#### HAILO Settings (Pi5)
-```python
-# Automatically set for Pi5 with HAILO
-USE_HAILO = True
-YOLO_MODEL = "yolov8n.hef"  # HAILO compiled model
-HAILO_DEVICE = "hailo0"
-VIDEO_SOURCE = "/dev/video0"  # cam0
-CAMERA_TYPE = "usb"  # or "rpi" for Pi camera
-ENABLE_REID = False  # Disabled for performance
-
-# Pi5 Performance Optimizations
-DISPLAY_SIZE = (1024, 768)
-PROCESS_EVERY_N_FRAMES = 2
-MAX_DETECTIONS = 50
-```
 
 #### Regular YOLO Settings (Development)
 ```python
@@ -221,25 +139,6 @@ bus_counter_rbpi/
 - Enable ReID for better tracking accuracy
 - Use larger YOLO models (yolov8s.pt, yolov8m.pt)
 - Process every frame for maximum accuracy
-
-### For Deployment (Raspberry Pi 5 with HAILO 8L)
-
-- Use HAILO-compiled HEF models
-- Disable ReID for better performance
-- Use HAILO 8L hardware acceleration
-- Focus on cam0 for optimal performance
-- Process every 1-2 frames (HAILO is fast enough)
-- Use optimized display resolution
-
-Example HAILO Pi5 optimized settings:
-```python
-USE_HAILO = True
-YOLO_MODEL = "yolov8n.hef"  # HAILO compiled model
-VIDEO_SOURCE = "/dev/video0"  # cam0
-PROCESS_EVERY_N_FRAMES = 1  # HAILO can handle every frame
-DISPLAY_SIZE = (1024, 768)
-BOTSORT_TRACKER['with_reid'] = False
-```
 
 ## Bus Counting Features
 
@@ -301,17 +200,10 @@ MIN_TRACK_AGE = 10  # Require 10 frames before counting
     - Test with other applications
     - For Pi5, check `/dev/video0` device permissions
 
-5. **HAILO Issues**:
-    - Verify HAILO SDK installation: `hailortcli query`
-    - Check HAILO device permissions
-    - Ensure HEF model files are compatible
-    - Monitor HAILO temperature and power
-
-6. **Pi5 Performance Issues**:
-    - Use HAILO models instead of regular YOLO
-    - Reduce display resolution
-    - Disable ReID feature
-    - Check camera format compatibility
+5. **Pi5 Performance Issues**:
+     - Reduce display resolution
+     - Disable ReID feature
+     - Check camera format compatibility
 
 ### Performance Tips
 
@@ -334,8 +226,7 @@ MIN_TRACK_AGE = 10  # Require 10 frames before counting
 
 ### Main Classes
 
-- **`YOLOBoTSORTTracker`**: Main tracking class with HAILO support
-- **`HailoYOLODetector`**: HAILO-optimized YOLO detector
+- **`YOLOBoTSORTTracker`**: Main tracking class
 - **`Pi5Camera`**: Raspberry Pi 5 camera handler
 - **`BoTSORT`**: Tracking algorithm implementation
 - **`Track`**: Individual track management
@@ -346,39 +237,17 @@ MIN_TRACK_AGE = 10  # Require 10 frames before counting
 ### Key Methods
 
 ```python
-# Initialize tracker (auto-detects HAILO)
+# Initialize tracker
 tracker = YOLOBoTSORTTracker()
 
-# Process video (auto-detects camera type)
+# Process video
 tracker.process_video(source, output_path)
 
 # Process single frame
 processed_frame = tracker.process_frame(frame, frame_count)
-
-# Initialize HAILO detector
-from hailo_yolo_detector import HailoYOLODetector
-detector = HailoYOLODetector("yolov8n.hef", config)
 
 # Initialize Pi5 camera
 from pi5_camera import create_pi5_camera
 camera = create_pi5_camera(camera_index="/dev/video0")
 ```
 
-## HAILO 8L Specific Features
-
-### Model Management
-- Automatic HAILO model download from HAILO Model Zoo
-- Support for YOLOv8, YOLOv5 variants
-- Hardware-accelerated inference pipeline
-
-### Performance Optimization
-- Batch processing support
-- Memory-efficient inference
-- Real-time performance monitoring
-- Automatic fallback to CPU if HAILO unavailable
-
-### Camera Integration
-- Native Pi5 camera module support
-- USB camera optimization for cam0
-- Automatic camera type detection
-- Hardware-specific optimizations

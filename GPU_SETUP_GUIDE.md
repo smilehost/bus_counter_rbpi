@@ -57,7 +57,7 @@ The project should now automatically detect and use your GPU.
 After proper GPU installation, the project will automatically:
 
 - **On Windows with CUDA GPU**: Use GPU acceleration with `.pt` models
-- **On Raspberry Pi 5**: Use HAILO accelerator with `.hef` models  
+- **On Raspberry Pi 5**: Use CPU with `.pt` models
 - **On other platforms**: Use CPU with `.pt` models (or GPU if CUDA available)
 
 ## Troubleshooting
