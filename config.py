@@ -34,6 +34,10 @@ class Config:
         self.YOLO_IOU_THRESHOLD = 0.45
         self.YOLO_CLASSES = [0]  # Focus ONLY on Person (0) if you are doing passenger counting to save resources
         
+        # --- Tracker Configuration ---
+        # Options: 'botsort', 'bytetrack'
+        self.TRACKER_TYPE = 'bytetrack'
+        
         # --- BoTSORT Configuration ---
         self.BOTSORT_TRACKER = {
             # Must be slightly higher or equal to YOLO_CONFIDENCE
@@ -60,6 +64,16 @@ class Config:
             'cmc_method': 'gmc', 
             'frame_rate': 30,
             'fuse_score': True
+        }
+        
+        # --- ByteTrack Configuration ---
+        self.BYETRACK_TRACKER = {
+            'track_thresh': 0.5,      # Threshold for track creation
+            'track_buffer': 30,        # Number of frames to keep lost tracks
+            'match_thresh': 0.8,       # IoU threshold for matching
+            'frame_rate': 30,          # Video frame rate
+            'high_thresh': 0.6,        # High confidence threshold
+            'low_thresh': 0.1,         # Low confidence threshold
         }
         
         # --- ReID Configuration ---
