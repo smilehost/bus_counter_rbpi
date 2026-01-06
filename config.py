@@ -17,15 +17,15 @@ class Config:
         # Platform-specific model selection
         if self.IS_WINDOWS and self.CUDA_AVAILABLE:
             # Windows with CUDA GPU
-            self.YOLO_MODEL = "best.pt"  # Regular PyTorch model
+            self.YOLO_MODEL = "best (1).pt"  # Regular PyTorch model
             self.DEVICE = "cuda"
         elif self.CUDA_AVAILABLE:
             # Other platforms with CUDA GPU
-            self.YOLO_MODEL = "best.pt"  # Regular PyTorch model
+            self.YOLO_MODEL = "best (1).pt"  # Regular PyTorch model
             self.DEVICE = "cuda"
         else:
             # Fallback to CPU
-            self.YOLO_MODEL = "best.pt"  # Regular PyTorch model
+            self.YOLO_MODEL = "best (1).pt"  # Regular PyTorch model
             self.DEVICE = "cpu"
             
         # LOWERED: High confidence kills tracking in crowds.
