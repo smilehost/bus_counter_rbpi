@@ -112,6 +112,58 @@ def example_video_file_tracking(video_path="test_video.mp4"):
     tracker.process_video(tracker.config.VIDEO_SOURCE, tracker.config.OUTPUT_VIDEO)
 
 
+def example_hailo_video_tracking(video_path="test_video.mp4"):
+    """Example: Hailo-accelerated video file processing with optimized settings"""
+    print("=== Hailo Video File Tracking Example ===")
+    
+    # Initialize tracker (will auto-detect Hailo if available)
+    tracker = YOLOBoTSORTTracker()
+    
+    # Configure for video file processing
+    tracker.config.VIDEO_SOURCE = video_path
+    tracker.config.OUTPUT_VIDEO = "hailo_" + video_path
+    tracker.config.SHOW_VIDEO = True
+    tracker.config.SAVE_VIDEO = True
+    
+    # Hailo-optimized settings
+    tracker.config.YOLO_CONFIDENCE = 0.4  # Lower threshold for better detection with Hailo
+    tracker.config.PROCESS_EVERY_N_FRAMES = 1  # Process every frame for best quality
+    tracker.config.MAX_DETECTIONS = 100  # Higher limit for Hailo acceleration
+    tracker.config.BOTSORT_TRACKER['with_reid'] = True  # Enable ReID for better tracking
+    
+    print(f"Processing video: {video_path}")
+    print(f"Output will be saved to: {tracker.config.OUTPUT_VIDEO}")
+    
+    # Display device information
+    print("\nDevice Information:")
+    print(f"  Device: {tracker.config.DEVICE}")
+    
+    # Check if Hailo is being used
+    if hasattr(tracker, 'hailo_inference') and tracker.hailo_inference is not None:
+        print("  Using Hailo accelerator: YES")
+        print("\nHailo-optimized settings:")
+        print(f"  Confidence threshold: {tracker.config.YOLO_CONFIDENCE}")
+        print(f"  Processing every frame: {tracker.config.PROCESS_EVERY_N_FRAMES}")
+        print(f"  Max detections: {tracker.config.MAX_DETECTIONS}")
+        print(f"  ReID enabled: {tracker.config.BOTSORT_TRACKER['with_reid']}")
+    else:
+        print("  Using Hailo accelerator: NO")
+        print("  Note: Hailo not detected, falling back to YOLO (CUDA/CPU)")
+        print("\nTo use Hailo acceleration:")
+        print("  1. Ensure Hailo hardware is connected")
+        print("  2. Install Hailo SDK: pip install hailo")
+        print("  3. Install Hailo runtime libraries")
+    
+    print("\nStarting video processing...")
+    print("Press 'q' to quit")
+    
+    # Process video file
+    tracker.process_video(tracker.config.VIDEO_SOURCE, tracker.config.OUTPUT_VIDEO)
+    
+    print(f"\nProcessing complete!")
+    print(f"Output saved to: {tracker.config.OUTPUT_VIDEO}")
+
+
 def example_batch_processing(video_files):
     """Example: Process multiple video files in batch"""
     print("=== Batch Processing Example ===")
@@ -372,10 +424,11 @@ def main():
     print("6. DEBUG: Ghost tracking test")
     print("7. YOLO Person Counting (isolated frame counting)")
     print("8. Run all examples (if available)")
+    print("9. Hailo video file processing")
     print("=" * 40)
     
     try:
-        choice = input("Enter your choice (1-8): ").strip()
+        choice = input("Enter your choice (1-9): ").strip()
         
         if choice == "1":
             example_webcam_tracking_with_fallback()
@@ -407,6 +460,12 @@ def main():
             print("Running multiple examples...")
             # Note: This would require actual video files
             print("Note: Batch processing requires actual video files")
+        elif choice == "9":
+            video_path = select_video_file()
+            if video_path:
+                example_hailo_video_tracking(video_path)
+            else:
+                print("No valid video file selected for Hailo processing.")
         else:
             print("Invalid choice. Running default webcam example...")
             example_webcam_tracking()

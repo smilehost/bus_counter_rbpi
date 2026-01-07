@@ -35,3 +35,27 @@ psutil>=5.8.0  # Already included, but needed for camera monitoring
 
 # Performance monitoring for Pi5
 gpustat>=1.1.1
+
+
+# ============================================================================
+# Hailo AI Accelerator Support (OPTIONAL)
+# ============================================================================
+# The following dependencies are optional and only required if you want to use
+# Hailo 26 AI accelerators for inference. The code will gracefully fall back to
+# YOLO/CUDA/CPU if these dependencies are not installed.
+#
+# To install Hailo dependencies:
+# pip install -r requirements.txt
+#
+# Note: Hailo runtime requires proper driver installation on your system.
+# Visit https://hailo.ai/developer-zone/ for installation guides.
+#
+# hailort: Hailo Runtime - provides Python bindings for Hailo hardware
+#          Required for running inference on Hailo 26 accelerators
+#          Version 4.18.0+ recommended for best compatibility
+hailort>=4.18.0
+
+# hailo-model-zoo: Collection of pre-optimized models for Hailo accelerators
+#                   Optional - provides access to pre-compiled HEF models
+#                   Useful for testing and development
+# hailo-model-zoo>=2.0.0

@@ -12,6 +12,14 @@ from botsort_tracker import BoTSORT
 from utils import Visualizer, BusCounter, PerformanceMonitor, resize_frame
 from class_names import get_class_name, COCO_CLASS_NAMES
 
+# Try to import HailoDetector (optional dependency)
+try:
+    from hailo_inference import HailoDetector, HAILORT_AVAILABLE
+    HAILO_AVAILABLE = HAILORT_AVAILABLE
+except ImportError:
+    HAILO_AVAILABLE = False
+    HailoDetector = None
+
 # Enforce use of enhanced camera module
 from enhanced_camera import EnhancedCamera, create_enhanced_camera, test_all_methods
 ENHANCED_CAMERA_AVAILABLE = True
@@ -56,8 +64,13 @@ class YOLOBoTSORTTracker:
         self.camera = None
         
         print(f"YOLO-BoTSORT Tracker initialized")
-        print(f"Detector Type: YOLO")
-        print(f"Model: {self.config.YOLO_MODEL}")
+        if self.device == "hailo":
+            print(f"Detector Type: Hailo Accelerator")
+            hef_model = getattr(self.config, 'HAILO_MODEL', 'auto-detected')
+            print(f"Model: {hef_model}")
+        else:
+            print(f"Detector Type: YOLO")
+            print(f"Model: {self.config.YOLO_MODEL}")
         print(f"Device: {self.device}")
         print(f"ReID Enabled: {tracker_config['with_reid']}")
         
@@ -68,7 +81,61 @@ class YOLOBoTSORTTracker:
         self.print_available_classes()
     
     def _initialize_detector(self):
-        """Initialize detector (YOLO)"""
+        """Initialize detector (Hailo or YOLO)"""
+        # Check if Hailo device is requested
+        if self.device == "hailo":
+            return self._initialize_hailo_detector()
+        else:
+            return self._initialize_yolo_detector()
+    
+    def _initialize_hailo_detector(self):
+        """Initialize Hailo detector"""
+        if not HAILO_AVAILABLE:
+            print("WARNING: Hailo device requested but hailort library is not available")
+            print("Falling back to YOLO detector")
+            return self._initialize_yolo_detector()
+        
+        try:
+            # Get HEF model path from config
+            # Try to find HEF file in current directory
+            hef_model = getattr(self.config, 'HAILO_MODEL', None)
+            if hef_model is None:
+                # Try to find HEF files in current directory
+                hef_files = [f for f in os.listdir('.') if f.endswith('.hef')]
+                if hef_files:
+                    hef_model = hef_files[0]
+                    print(f"Using HEF model: {hef_model}")
+                else:
+                    raise FileNotFoundError(
+                        "No HEF model file found. Please provide HAILO_MODEL in config "
+                        "or place a .hef file in the current directory."
+                    )
+            
+            # Initialize HailoDetector
+            print(f"Initializing Hailo detector with model: {hef_model}")
+            detector = HailoDetector(
+                hef_path=hef_model,
+                input_shape=(640, 640),
+                batch_size=1
+            )
+            print(f"Hailo detector initialized successfully")
+            return detector
+            
+        except ImportError as e:
+            print(f"ERROR: Failed to import hailort: {e}")
+            print("Falling back to YOLO detector")
+            return self._initialize_yolo_detector()
+        except FileNotFoundError as e:
+            print(f"ERROR: {e}")
+            print("Falling back to YOLO detector")
+            return self._initialize_yolo_detector()
+        except Exception as e:
+            print(f"ERROR: Failed to initialize Hailo detector: {e}")
+            print("Falling back to YOLO detector")
+            return self._initialize_yolo_detector()
+    
+    def _initialize_yolo_detector(self):
+        """Initialize YOLO detector"""
         try:
             detector = YOLO(self.config.YOLO_MODEL)
             # Move model to the configured device
@@ -504,14 +571,24 @@ class YOLOBoTSORTTracker:
         return annotated_frame
     
     def _extract_detections(self, results):
-        """Extract detections from YOLO results"""
+        """Extract detections from YOLO or Hailo results"""
         detections = []
         detected_classes = set()
         
         if results.boxes is not None:
-            boxes = results.boxes.xyxy.cpu().numpy()
-            scores = results.boxes.conf.cpu().numpy()
-            classes = results.boxes.cls.cpu().numpy().astype(int)
+            # Handle both YOLO and Hailo results
+            # HailoBoxes already provides numpy arrays, YOLO needs .cpu().numpy()
+            boxes = results.boxes.xyxy
+            scores = results.boxes.conf
+            classes = results.boxes.cls
+            
+            # Convert to numpy arrays if needed (for YOLO results)
+            if not isinstance(boxes, np.ndarray):
+                boxes = boxes.cpu().numpy()
+            if not isinstance(scores, np.ndarray):
+                scores = scores.cpu().numpy()
+            if not isinstance(classes, np.ndarray):
+                classes = classes.cpu().numpy().astype(int)
             
             for i, box in enumerate(boxes):
                 # Include class ID in detection: [x1, y1, x2, y2, confidence, class_id]
@@ -519,8 +596,8 @@ class YOLOBoTSORTTracker:
                 detections.append(detection)
                 
                 # Track detected classes for printing
-                class_name = get_class_name(classes[i])
-                detected_classes.add((classes[i], class_name))
+                class_name = get_class_name(int(classes[i]))
+                detected_classes.add((int(classes[i]), class_name))
         
         # Print detected classes
         if detected_classes:

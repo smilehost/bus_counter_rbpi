@@ -12,10 +12,15 @@ class Config:
         
         # --- Device Detection ---
         self.CUDA_AVAILABLE = self._check_cuda_available()
+        self.HAILO_AVAILABLE = self._check_hailo_available()
         
         # --- YOLO Model Configuration ---
-        # Platform-specific model selection
-        if self.IS_WINDOWS and self.CUDA_AVAILABLE:
+        # Device priority: Hailo > CUDA > CPU
+        if self.HAILO_AVAILABLE:
+            # Hailo accelerator available
+            self.YOLO_MODEL = "best.hef"  # Hailo HEF model format
+            self.DEVICE = "hailo"
+        elif self.IS_WINDOWS and self.CUDA_AVAILABLE:
             # Windows with CUDA GPU
             self.YOLO_MODEL = "best (1).pt"  # Regular PyTorch model
             self.DEVICE = "cuda"
@@ -30,7 +35,11 @@ class Config:
             
         # LOWERED: High confidence kills tracking in crowds.
         # 0.4 - 0.5 is usually the sweet spot for tracking.
-        self.YOLO_CONFIDENCE = 0.5
+        # Hailo can handle lower confidence thresholds for better detection
+        if self.HAILO_AVAILABLE:
+            self.YOLO_CONFIDENCE = 0.4  # Lower threshold for better detection with Hailo
+        else:
+            self.YOLO_CONFIDENCE = 0.5
         self.YOLO_IOU_THRESHOLD = 0.45
         self.YOLO_CLASSES = [0]  # Focus ONLY on Person (0) if you are doing passenger counting to save resources
         
@@ -177,7 +186,13 @@ class Config:
         
         # --- Performance ---
         # Optimize for Pi5 with HAILO 8L
-        if self.IS_PI5:
+        if self.HAILO_AVAILABLE:
+            # Hailo accelerator settings - can handle more detections
+            self.MAX_DETECTIONS = 100  # Hailo can handle more detections
+            self.PROCESS_EVERY_N_FRAMES = 1  # Process every frame
+            self.DEBUG_FRAME_INTERVAL = 30  # Less frequent debug
+            self.ENABLE_REID = True  # Enable ReID with Hailo's speed
+        elif self.IS_PI5:
             self.MAX_DETECTIONS = 50  # Reduced for Pi5
             self.PROCESS_EVERY_N_FRAMES = 2  # Skip frames for better performance
             self.DEBUG_FRAME_INTERVAL = 30  # Less frequent debug on Pi5
@@ -214,6 +229,36 @@ class Config:
             print("PyTorch not available for CUDA detection")
             return False
     
+    def _check_hailo_available(self):
+        """Check if Hailo accelerator is available"""
+        try:
+            from hailo_platform import HailoPlatform
+            from hailo_platform import HEF, HailoStreamInterface
+            print("HailoRT library imported successfully")
+            
+            try:
+                # Try to create a HailoPlatform instance to check for devices
+                platform = HailoPlatform()
+                devices = platform.get_all_devices()
+                
+                if devices and len(devices) > 0:
+                    device_count = len(devices)
+                    device_names = [dev.name for dev in devices]
+                    print(f"Found {device_count} Hailo device(s): {', '.join(device_names)}")
+                    return True
+                else:
+                    print("No Hailo devices found")
+                    return False
+            except Exception as e:
+                print(f"Error accessing Hailo devices: {e}")
+                return False
+        except ImportError:
+            print("HailoRT library not available (hailort not installed)")
+            return False
+        except Exception as e:
+            print(f"Unexpected error during Hailo detection: {e}")
+            return False
+    
     def get_device_info(self):
         """Get information about the available device"""
         info = {
@@ -223,7 +268,17 @@ class Config:
             'model': self.YOLO_MODEL
         }
         
-        if self.DEVICE == "cuda":
+        if self.DEVICE == "hailo":
+            try:
+                from hailo_platform import HailoPlatform
+                platform = HailoPlatform()
+                devices = platform.get_all_devices()
+                if devices and len(devices) > 0:
+                    info['hailo_device_count'] = len(devices)
+                    info['hailo_device_names'] = [dev.name for dev in devices]
+            except Exception as e:
+                info['hailo_error'] = str(e)
+        elif self.DEVICE == "cuda":
             try:
                 import torch
                 info['cuda_version'] = torch.version.cuda
@@ -244,7 +299,11 @@ class Config:
         print(f"Device: {info['device']}")
         print(f"Model: {info['model']}")
         
-        if info['device'] == "cuda":
+        if info['device'] == "hailo":
+            print(f"Hailo Device Count: {info.get('hailo_device_count', 0)}")
+            if 'hailo_device_names' in info:
+                print(f"Hailo Device Names: {', '.join(info['hailo_device_names'])}")
+        elif info['device'] == "cuda":
             print(f"CUDA Version: {info.get('cuda_version', 'Unknown')}")
             print(f"GPU Count: {info.get('gpu_count', 0)}")
             if 'gpu_name' in info:
